@@ -8,19 +8,28 @@ export async function downloadFile(format: VideoFormat, title: string, url?: str
 
     const platform = detectPlatformFromUrl(url)
 
-    switch (platform) {
-      case "YouTube":
-        await downloadYouTubeVideo(url, format, title)
-        break
-      case "Instagram":
-        await downloadInstagramVideo(url, format, title)
-        break
-      case "TikTok":
-        await downloadTikTokVideo(url, format, title)
-        break
-      default:
-        // Mock download for other platforms
-        await downloadMockFile(format, title)
+    try {
+      // Try server-side download first
+      switch (platform) {
+        case "YouTube":
+          await downloadYouTubeVideo(url, format, title)
+          break
+        case "Instagram":
+          await downloadInstagramVideo(url, format, title)
+          break
+        case "TikTok":
+          await downloadTikTokVideo(url, format, title)
+          break
+        default:
+          // Mock download for other platforms
+          await downloadMockFile(format, title)
+      }
+    } catch (serverError) {
+      console.error(`Server-side download failed: ${serverError}`)
+      console.log("Falling back to client-side download...")
+
+      // Fall back to client-side download
+      await clientSideDownload(url, format, title, platform)
     }
   } catch (error) {
     console.error("Download failed:", error)
@@ -53,11 +62,32 @@ async function downloadYouTubeVideo(url: string, format: VideoFormat, title: str
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "YouTube download failed")
+      // Try to get error message if it's JSON
+      let errorMessage = "YouTube download failed"
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorMessage
+      } catch (jsonError) {
+        // If not JSON, get text content
+        try {
+          const textError = await response.text()
+          errorMessage = textError || errorMessage
+        } catch (textError) {
+          // If text extraction fails, use status
+          errorMessage = `YouTube download failed with status: ${response.status}`
+        }
+      }
+      throw new Error(errorMessage)
     }
 
-    await streamDownload(response, title, format)
+    // Check if response is a blob
+    const contentType = response.headers.get("content-type")
+    if (!contentType || (!contentType.includes("video/") && !contentType.includes("audio/"))) {
+      throw new Error("Invalid response format from server")
+    }
+
+    const blob = await response.blob()
+    await streamDownload(blob, title, format)
   } catch (error) {
     console.error("YouTube download error:", error)
     throw error
@@ -79,11 +109,28 @@ async function downloadInstagramVideo(url: string, format: VideoFormat, title: s
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Instagram download failed")
+      let errorMessage = "Instagram download failed"
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorMessage
+      } catch (jsonError) {
+        try {
+          const textError = await response.text()
+          errorMessage = textError || errorMessage
+        } catch (textError) {
+          errorMessage = `Instagram download failed with status: ${response.status}`
+        }
+      }
+      throw new Error(errorMessage)
     }
 
-    await streamDownload(response, title, format)
+    const contentType = response.headers.get("content-type")
+    if (!contentType || (!contentType.includes("video/") && !contentType.includes("audio/"))) {
+      throw new Error("Invalid response format from server")
+    }
+
+    const blob = await response.blob()
+    await streamDownload(blob, title, format)
   } catch (error) {
     console.error("Instagram download error:", error)
     throw error
@@ -105,19 +152,75 @@ async function downloadTikTokVideo(url: string, format: VideoFormat, title: stri
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "TikTok download failed")
+      let errorMessage = "TikTok download failed"
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorMessage
+      } catch (jsonError) {
+        try {
+          const textError = await response.text()
+          errorMessage = textError || errorMessage
+        } catch (textError) {
+          errorMessage = `TikTok download failed with status: ${response.status}`
+        }
+      }
+      throw new Error(errorMessage)
     }
 
-    await streamDownload(response, title, format)
+    const contentType = response.headers.get("content-type")
+    if (!contentType || (!contentType.includes("video/") && !contentType.includes("audio/"))) {
+      throw new Error("Invalid response format from server")
+    }
+
+    const blob = await response.blob()
+    await streamDownload(blob, title, format)
   } catch (error) {
     console.error("TikTok download error:", error)
     throw error
   }
 }
 
-async function streamDownload(response: Response, title: string, format: VideoFormat): Promise<void> {
-  const blob = await response.blob()
+async function clientSideDownload(url: string, format: VideoFormat, title: string, platform: string): Promise<void> {
+  console.log(`Using client-side download for ${platform}...`)
+
+  // For YouTube, we can use a public API service as fallback
+  if (platform === "YouTube") {
+    try {
+      const videoId = extractYouTubeId(url)
+      if (!videoId) throw new Error("Invalid YouTube URL")
+
+      // Use a public YouTube download service
+      const downloadUrl = `https://api.vevioz.com/api/button/mp4/${videoId}`
+
+      // Open in new tab as fallback
+      window.open(downloadUrl, "_blank")
+      return
+    } catch (error) {
+      console.error("Client-side YouTube download failed:", error)
+    }
+  }
+
+  // For other platforms, fall back to mock downloads
+  await downloadMockFile(format, title)
+}
+
+function extractYouTubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+  ]
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match) {
+      return match[1]
+    }
+  }
+
+  return null
+}
+
+async function streamDownload(blob: Blob, title: string, format: VideoFormat): Promise<void> {
   const downloadUrl = URL.createObjectURL(blob)
 
   const link = document.createElement("a")

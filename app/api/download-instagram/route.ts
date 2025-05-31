@@ -1,10 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { exec } from "child_process"
-import { promisify } from "util"
-import fs from "fs"
+import { spawn } from "child_process"
+import { promises as fs } from "fs"
 import path from "path"
-
-const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,49 +16,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid Instagram URL" }, { status: 400 })
     }
 
-    // Create temporary directory
-    const tempDir = path.join(process.cwd(), "temp")
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true })
-    }
-
-    const outputPath = path.join(tempDir, `instagram_${Date.now()}`)
-
     try {
-      let command: string
-
-      if (format === "audio") {
-        // Download audio only
-        command = `yt-dlp -x --audio-format mp3 -o "${outputPath}.%(ext)s" "${url}"`
-      } else {
-        // Download video
-        const formatSelector = quality === "1080p" ? "best[height<=1080]" : "best[height<=720]"
-        command = `yt-dlp -f "${formatSelector}" -o "${outputPath}.%(ext)s" "${url}"`
+      // Check if yt-dlp is available
+      const ytdlpAvailable = await checkYtDlpAvailable()
+      if (!ytdlpAvailable) {
+        return NextResponse.json(
+          {
+            error: "yt-dlp is not installed. Please install it with: pip install yt-dlp",
+          },
+          { status: 500 },
+        )
       }
 
-      console.log("Executing Instagram download:", command)
-      const { stdout, stderr } = await execAsync(command)
-
-      if (stderr && !stderr.includes("WARNING")) {
-        throw new Error(stderr)
+      // Create temporary directory
+      const tempDir = path.join(process.cwd(), "temp")
+      try {
+        await fs.access(tempDir)
+      } catch {
+        await fs.mkdir(tempDir, { recursive: true })
       }
 
-      // Find the downloaded file
-      const files = fs.readdirSync(tempDir).filter((file) => file.startsWith(path.basename(outputPath)))
+      const timestamp = Date.now()
+      const outputTemplate = path.join(tempDir, `instagram_${timestamp}.%(ext)s`)
 
-      if (files.length === 0) {
-        throw new Error("Instagram download failed - no file created")
-      }
-
-      const downloadedFile = path.join(tempDir, files[0])
-      const fileBuffer = fs.readFileSync(downloadedFile)
-
-      // Clean up
-      fs.unlinkSync(downloadedFile)
+      const fileBuffer = await downloadWithYtDlp(url, format, quality, outputTemplate, timestamp, tempDir)
 
       // Return file
       const mimeType = format === "audio" ? "audio/mpeg" : "video/mp4"
-      const filename = `instagram_${quality}.${format === "audio" ? "mp3" : "mp4"}`
+      const extension = format === "audio" ? "mp3" : "mp4"
+      const filename = `instagram_${quality}.${extension}`
 
       return new NextResponse(fileBuffer, {
         headers: {
@@ -74,7 +57,7 @@ export async function POST(request: NextRequest) {
       console.error("Instagram download error:", downloadError)
       return NextResponse.json(
         {
-          error: "Instagram download failed. The content might be private or unavailable.",
+          error: `Instagram download failed: ${downloadError instanceof Error ? downloadError.message : "Unknown error"}`,
         },
         { status: 500 },
       )
@@ -83,4 +66,90 @@ export async function POST(request: NextRequest) {
     console.error("Instagram API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+async function checkYtDlpAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const process = spawn("yt-dlp", ["--version"], { stdio: "pipe" })
+
+    process.on("close", (code) => {
+      resolve(code === 0)
+    })
+
+    process.on("error", () => {
+      resolve(false)
+    })
+
+    setTimeout(() => {
+      process.kill()
+      resolve(false)
+    }, 5000)
+  })
+}
+
+async function downloadWithYtDlp(
+  url: string,
+  format: string,
+  quality: string,
+  outputTemplate: string,
+  timestamp: number,
+  tempDir: string,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    let ytdlArgs: string[]
+
+    if (format === "audio") {
+      ytdlArgs = ["-x", "--audio-format", "mp3", "-o", outputTemplate, url]
+    } else {
+      const formatSelector = quality === "1080p" ? "best[height<=1080]" : "best[height<=720]"
+      ytdlArgs = ["-f", formatSelector, "-o", outputTemplate, url]
+    }
+
+    console.log("Executing Instagram download:", ytdlArgs)
+
+    const ytdlProcess = spawn("yt-dlp", ytdlArgs, {
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+
+    let stderr = ""
+
+    ytdlProcess.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString()
+    })
+
+    ytdlProcess.on("close", async (code: number) => {
+      if (code !== 0) {
+        console.error("yt-dlp stderr:", stderr)
+        reject(new Error(`yt-dlp failed with code ${code}: ${stderr}`))
+        return
+      }
+
+      try {
+        const files = await fs.readdir(tempDir)
+        const downloadedFiles = files.filter((file: string) => file.startsWith(`instagram_${timestamp}`))
+
+        if (downloadedFiles.length === 0) {
+          reject(new Error("Instagram download failed - no file created"))
+          return
+        }
+
+        const downloadedFile = path.join(tempDir, downloadedFiles[0])
+        const fileBuffer = await fs.readFile(downloadedFile)
+
+        await fs.unlink(downloadedFile)
+        resolve(fileBuffer)
+      } catch (fileError) {
+        reject(new Error(`File processing failed: ${fileError}`))
+      }
+    })
+
+    ytdlProcess.on("error", (error: Error) => {
+      reject(new Error(`Failed to start yt-dlp: ${error.message}`))
+    })
+
+    setTimeout(() => {
+      ytdlProcess.kill()
+      reject(new Error("Download timeout"))
+    }, 300000)
+  })
 }

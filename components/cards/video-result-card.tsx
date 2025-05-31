@@ -13,6 +13,7 @@ interface VideoResultCardProps {
   downloadingFormat: string | null
   downloadError?: string | null
   onClearError?: () => void
+  currentUrl?: string
 }
 
 export function VideoResultCard({
@@ -21,6 +22,7 @@ export function VideoResultCard({
   downloadingFormat,
   downloadError,
   onClearError,
+  currentUrl,
 }: VideoResultCardProps) {
   return (
     <Card className="max-w-4xl mx-auto mb-12 shadow-lg border-0 bg-white/80 backdrop-blur-sm animate-in fade-in-50 slide-in-from-bottom-4 duration-500">
@@ -30,7 +32,7 @@ export function VideoResultCard({
           <div className="md:col-span-1">
             <div className="relative rounded-lg overflow-hidden bg-gray-100">
               <img
-                src={videoData.thumbnail || "/placeholder.svg"}
+                src={videoData.thumbnail || "/placeholder.svg?height=180&width=320"}
                 alt={videoData.title}
                 className="w-full aspect-video object-cover"
               />
@@ -88,6 +90,8 @@ export function VideoResultCard({
                       onDownload={onDownload}
                       isDownloading={downloadingFormat === formatKey}
                       hasError={hasError}
+                      videoUrl={currentUrl}
+                      platform={videoData.platform}
                     />
                   )
                 })}
