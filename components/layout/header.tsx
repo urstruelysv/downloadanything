@@ -1,12 +1,13 @@
 import Image from "next/image";
 import { useState } from "react";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
-
+import { useRouter } from "next/navigation";
 export function Header() {
+  const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   return (
     <>
-      <header className="border-b border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md sticky top-0 z-50 shadow-sm dark:shadow-gray-900/20">
+      <header className="border-b border-gray-100 w-full h-20 mt-4 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md sticky top-0 z-50 shadow-sm dark:shadow-gray-900/20">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo Section */}
@@ -19,6 +20,7 @@ export function Header() {
                     width={24}
                     height={24}
                     className="w-full h-full object-contain filter brightness-0 invert"
+                    onClick={() => router.push("/")}
                   />
                 </div>
               </div>
@@ -26,7 +28,7 @@ export function Header() {
                 <h1 className="text-xl font-semibold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
                   DownloadAnything
                 </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wide">
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wide ">
                   Universal Download Solution
                 </p>
               </div>

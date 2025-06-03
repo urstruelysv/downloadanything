@@ -34,14 +34,14 @@ export function HeroSection() {
             transition={{ duration: 0.6, ease: "easeOut" }}
             className="mb-6 sm:mb-8"
           >
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 dark:text-white dark:bg-gradient-to-r dark:from-blue-400 dark:to-purple-500 dark:bg-clip-text dark:text-transparent leading-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 dark:text-white dark:bg-gradient-to-r dark:from-blue-400 dark:to-purple-500 dark:bg-clip-text dark:text-transparent leading-tight mg-2">
               Download{" "}
               <span className="relative">
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.3 }}
-                  className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent"
+                  className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent "
                 >
                   anything
                 </motion.span>
@@ -113,6 +113,8 @@ export function HeroSection() {
                 <motion.img
                   src="/anything.png"
                   alt="Download Icon"
+                  width={48}
+                  height={48}
                   className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 object-contain"
                   animate={{
                     y: isDownloading ? [0, -3, 3, 0] : 0,
