@@ -11,7 +11,7 @@ export function Footer() {
                 <Download className="w-5 h-5 text-white" />
               </div>
               <span className="font-bold text-gray-900 dark:text-white">
-                DownloadSomething
+                DownloadAnything
               </span>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -56,7 +56,17 @@ export function Footer() {
           </div>
         </div>
         <div className="border-t border-gray-200/50 dark:border-gray-700/50 mt-8 pt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          © 2024 DownloadSomething. All rights reserved.
+          <div>© 2024 DownloadAnything. All rights reserved.</div>
+          <div>
+            <a
+              href="https://www.aethoscompany.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              a product of avl
+            </a>
+          </div>
         </div>
       </div>
     </footer>
