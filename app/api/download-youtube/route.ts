@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import { promises as fs } from "fs";
-import path from "path";
 import { z } from "zod";
+import { YouTubeService } from "@/lib/services/youtube-service";
 
 // Only YouTube domains
 const YT_DOMAINS = [
@@ -41,13 +39,6 @@ const downloadRequestSchema = z.object({
     .default("720p"),
 });
 
-const CONFIG = {
-  TEMP_DIR: path.join(process.cwd(), "temp"),
-  MAX_FILE_SIZE: 500 * 1024 * 1024,
-  DOWNLOAD_TIMEOUT: 300_000,
-  YTDLP_CHECK_TIMEOUT: 5_000,
-} as const;
-
 export async function POST(request: NextRequest) {
   let body;
   try {
@@ -69,43 +60,36 @@ export async function POST(request: NextRequest) {
     throw err;
   }
 
-  await ensureYtDlp();
-  await fs.mkdir(CONFIG.TEMP_DIR, { recursive: true });
-
   try {
-    const videoInfo = await getVideoInfo(data.url);
-    const safeTitle = sanitizeFilename(videoInfo.title);
-    const finalFilename = `YouTube_${safeTitle}.mp4`;
+    const videoInfo = await YouTubeService.getVideoInfo(data.url);
+    const format = data.format === "audio" ? "mp3" : "mp4";
 
-    // Generate a unique base name for the temporary file
-    const uniqueBaseName = `${Date.now()}_yt_temp`;
-    const outputTemplate = path.join(
-      CONFIG.TEMP_DIR,
-      `${uniqueBaseName}.%(ext)s`
-    );
+    // Get the appropriate format URL
+    const formatUrl = videoInfo.formats.find(
+      (f) =>
+        f.mimeType.includes(format) &&
+        (data.format === "audio" ? f.hasAudio : f.hasVideo)
+    )?.url;
 
-    console.log(`[YouTube Route] Using outputTemplate: ${outputTemplate}`);
+    if (!formatUrl) {
+      throw new Error(`No ${format} format available`);
+    }
 
-    const fileBuffer = await runYtDlp(
-      data.url,
-      data.format,
-      data.quality,
-      outputTemplate,
-      (progress) => {
-        // Progress is logged but not streamed to client in this model
-        console.log(`[YouTube Route] Download progress: ${progress}%`);
-      }
-    );
+    // Download the video/audio
+    const response = await fetch(formatUrl);
+    if (!response.ok) {
+      throw new Error("Download failed");
+    }
 
-    console.log(`[YouTube Route] Contents of TEMP_DIR (${CONFIG.TEMP_DIR}):`);
-    const tempDirContents = await fs.readdir(CONFIG.TEMP_DIR);
-    console.log(tempDirContents);
+    const blob = await response.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(buffer, {
       headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="${finalFilename}"`,
-        "Content-Length": fileBuffer.length.toString(),
+        "Content-Type": format === "mp3" ? "audio/mpeg" : "video/mp4",
+        "Content-Disposition": `attachment; filename="video.${format}"`,
+        "Content-Length": buffer.length.toString(),
       },
     });
   } catch (e) {
@@ -115,159 +99,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-async function ensureYtDlp() {
-  return new Promise<void>((res, rej) => {
-    const p = spawn("yt-dlp", ["--version"], {
-      timeout: CONFIG.YTDLP_CHECK_TIMEOUT,
-    });
-    p.on("close", (code) =>
-      code === 0 ? res() : rej(new Error("yt-dlp missing"))
-    );
-    p.on("error", () => rej(new Error("yt-dlp error")));
-  });
-}
-
-function runYtDlp(
-  url: string,
-  format: "audio" | "video",
-  quality: string,
-  out: string,
-  onProgress: (p: number) => void
-): Promise<Buffer> {
-  const args =
-    format === "audio"
-      ? [
-          "-x",
-          "--audio-format",
-          "mp3",
-          "--audio-quality",
-          quality === "320kbps" ? "0" : "5",
-        ]
-      : [
-          "-f",
-          "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a][acodec^=mp4a]/best[ext=mp4]/best", // Prioritize H.264 MP4 video and AAC M4A audio, then generic best MP4, then general best
-          "--merge-output-format",
-          "mp4",
-          "--prefer-ffmpeg",
-          "--postprocessor-args",
-          "-c:v libx264 -c:a aac -b:a 192k -preset ultrafast -movflags +faststart",
-        ];
-  args.unshift(
-    "--no-warnings",
-    "--no-playlist",
-    "--max-filesize",
-    "500M",
-    "-o",
-    out,
-    url
-  );
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn("yt-dlp", args);
-    let stderr = "";
-    proc.stdout?.on("data", (d) => {
-      const m = d.toString().match(/\[download\]\s+(\d+\.\d+)%/);
-      if (m) onProgress(parseFloat(m[1]));
-    });
-    proc.stderr?.on("data", (d) => (stderr += d.toString()));
-    proc.on("close", async (code) => {
-      if (code !== 0) {
-        console.error("yt-dlp process failed:", { code, stderr });
-        const errorMessage = stderr.includes("command not found")
-          ? "yt-dlp not found. Please ensure it's installed and in your PATH."
-          : stderr || `Download failed with exit code ${code}`;
-        return reject(new Error(errorMessage));
-      }
-      // read back the file we just wrote
-      const files = await fs.readdir(CONFIG.TEMP_DIR);
-      const baseFileName = path.basename(out).split(".%")[0]; // Get the base name before %(ext)s
-      const fname = files.find(
-        (f) =>
-          f.startsWith(baseFileName) &&
-          f.endsWith(format === "audio" ? ".mp3" : ".mp4")
-      );
-
-      if (!fname)
-        return reject(new Error("No output file found after download."));
-
-      const downloadedFile = path.join(CONFIG.TEMP_DIR, fname);
-      try {
-        const buf = await fs.readFile(downloadedFile);
-        // await fs.unlink(downloadedFile); // COMMENTED OUT: KEEP FILE FOR DEBUGGING
-        resolve(buf);
-      } catch (fileReadError) {
-        console.error(
-          "Error reading or deleting temporary file:",
-          fileReadError
-        );
-        // await fs.unlink(downloadedFile).catch(() => {}); // COMMENTED OUT: KEEP FILE FOR DEBUGGING
-        reject(
-          new Error(
-            `Failed to read or clean up downloaded file: ${
-              (fileReadError as Error).message
-            }`
-          )
-        );
-      }
-    });
-    proc.on("error", (err) => {
-      console.error("Failed to spawn yt-dlp:", err);
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(
-          new Error(
-            "yt-dlp command not found. Please ensure yt-dlp is installed and accessible in your system's PATH."
-          )
-        );
-      } else {
-        reject(new Error(`Failed to execute yt-dlp: ${err.message}`));
-      }
-    });
-  });
-}
-
-async function getVideoInfo(url: string): Promise<{ title: string }> {
-  return new Promise((resolve, reject) => {
-    const ytdlProcess = spawn("yt-dlp", [
-      "--no-warnings",
-      "--dump-json",
-      "--no-playlist",
-      url,
-    ]);
-
-    let stdout = "";
-    let stderr = "";
-
-    ytdlProcess.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    ytdlProcess.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    ytdlProcess.on("close", (code: number) => {
-      if (code !== 0) {
-        reject(new Error(`Failed to get video info: ${stderr}`));
-        return;
-      }
-
-      try {
-        const info = JSON.parse(stdout);
-        resolve({ title: info.title });
-      } catch (error) {
-        reject(new Error("Failed to parse video info"));
-      }
-    });
-  });
-}
-
-function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[<>:"/\\|?*]/g, "_") // Replace invalid characters
-    .replace(/\s+/g, "_") // Replace spaces with underscores
-    .substring(0, 100); // Limit length
 }
 
 function extractVideoId(u: string): string | null {
