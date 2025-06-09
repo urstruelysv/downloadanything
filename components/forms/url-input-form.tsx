@@ -1,153 +1,128 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import { Download, Loader2, AlertCircle, CheckCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useState } from "react";
+import { Download, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface UrlInputFormProps {
-  onSubmit: (url: string) => void
-  loading: boolean
-  error: string
+  onSubmit: (url: string) => void;
+  loading: boolean;
+  error: string;
 }
 
 export function UrlInputForm({ onSubmit, loading, error }: UrlInputFormProps) {
-  const [url, setUrl] = useState("")
-  const [isValidUrl, setIsValidUrl] = useState(false)
+  const [url, setUrl] = useState("");
+  const [isValidUrl, setIsValidUrl] = useState(false);
 
-  const validateUrl = (inputUrl: string) => {
-    const supportedPlatforms = [
-      "youtube.com",
-      "youtu.be",
-      "m.youtube.com",
-      "instagram.com",
-      "instagr.am",
-      "tiktok.com",
-      "vm.tiktok.com",
-      "facebook.com",
-      "fb.watch",
-      "m.facebook.com",
-      "twitter.com",
-      "x.com",
-      "t.co",
-      "vimeo.com",
-    ]
+  const supportedPlatforms = [
+    "youtube.com",
+    "youtu.be",
+    "instagram.com",
+    "instagr.am",
+    "tiktok.com",
+    "vm.tiktok.com",
+    "facebook.com",
+    "fb.watch",
+    "m.facebook.com",
+    "twitter.com",
+    "x.com",
+    "t.co",
+    "vimeo.com",
+  ];
 
-    const isValid = supportedPlatforms.some((platform) => inputUrl.toLowerCase().includes(platform))
+  const validateUrl = (input: string) => {
+    const isValid = supportedPlatforms.some((p) =>
+      input.toLowerCase().includes(p)
+    );
+    setIsValidUrl(isValid);
+    return isValid;
+  };
 
-    setIsValidUrl(isValid)
-    return isValid
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const inputUrl = e.target.value
-    setUrl(inputUrl)
-
-    if (inputUrl.trim()) {
-      validateUrl(inputUrl)
-    } else {
-      setIsValidUrl(false)
-    }
-  }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setUrl(value);
+    validateUrl(value);
+  };
 
   const handleSubmit = () => {
-    if (!url.trim()) {
-      return
-    }
-    onSubmit(url)
-  }
-
-  const getPlaceholderText = () => {
-    return "Paste YouTube, Instagram, TikTok, Facebook, Twitter, or Vimeo URL..."
-  }
-
-  const getExampleUrls = () => [
-    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    "https://www.instagram.com/p/ABC123/",
-    "https://www.tiktok.com/@user/video/123",
-    "https://www.facebook.com/watch/?v=123",
-  ]
+    if (!url.trim() || !isValidUrl) return;
+    onSubmit(url.trim());
+  };
 
   return (
-    <Card className="max-w-2xl mx-auto mb-8 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-      <CardContent className="p-6">
-        <div className="space-y-4">
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <Input
-                placeholder={getPlaceholderText()}
-                value={url}
-                onChange={handleInputChange}
-                className={`h-12 text-lg pr-10 transition-colors ${
-                  url && isValidUrl
-                    ? "border-green-400 focus:border-green-500 focus:ring-green-400/20"
-                    : url && !isValidUrl
-                      ? "border-red-400 focus:border-red-500 focus:ring-red-400/20"
-                      : "border-gray-200 focus:border-blue-400 focus:ring-blue-400/20"
-                }`}
-                onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
-              />
-              {url && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  {isValidUrl ? (
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 text-red-500" />
-                  )}
-                </div>
-              )}
-            </div>
-            <Button
-              onClick={handleSubmit}
-              disabled={loading || !url.trim() || !isValidUrl}
-              className="h-12 px-8 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </>
-              )}
-            </Button>
+    <div className="w-full max-w-3xl mx-auto mb-8 px-4 sm:px-0">
+      <div className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4">
+          {/* Input field */}
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={url}
+              onChange={handleChange}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              placeholder="Paste a YouTube, TikTok, Instagram, etc. link…"
+              className={`
+                w-full h-12 px-4 pr-10 text-base rounded-lg border transition 
+                bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 
+                ${
+                  url
+                    ? isValidUrl
+                      ? "border-green-400 focus:ring-green-400/40"
+                      : "border-red-400 focus:ring-red-400/40"
+                    : "border-gray-200 dark:border-gray-600 focus:ring-blue-400/40"
+                }
+              `}
+            />
+
+            {/* Validation icon */}
+            {url && (
+              <div className="absolute top-1/2 right-3 -translate-y-1/2 pointer-events-none">
+                {isValidUrl ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+            )}
           </div>
 
-          {error && (
-            <Alert className="border-red-200 bg-red-50">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <AlertDescription className="text-red-700">{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {!url && (
-            <div className="text-sm text-gray-500">
-              <p className="mb-2">Try these example URLs:</p>
-              <div className="space-y-1">
-                {getExampleUrls().map((exampleUrl, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setUrl(exampleUrl)
-                      validateUrl(exampleUrl)
-                    }}
-                    className="block text-blue-600 hover:text-blue-800 hover:underline text-left"
-                  >
-                    {exampleUrl}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Submit button */}
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !url.trim() || !isValidUrl}
+            className={`
+              flex items-center justify-center h-12 px-6 rounded-lg text-white 
+              transition disabled:opacity-50
+              ${
+                loading
+                  ? "bg-blue-500 cursor-default"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }
+            `}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processing…
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </>
+            )}
+          </button>
         </div>
-      </CardContent>
-    </Card>
-  )
+
+        {/* Error message (if any) */}
+        {error && (
+          <div className="mt-2 px-4 pb-4">
+            <div className="flex items-start gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-md p-2">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

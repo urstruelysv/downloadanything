@@ -3,7 +3,7 @@ import { useState, useEffect, createContext, useContext } from "react";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { HeroSection } from "@/components/sections/hero-section";
-import { UrlInputForm } from "@/components/forms/url-input-form";
+
 import { VideoResultCard } from "@/components/cards/video-result-card";
 import { HowToUseSection } from "@/components/sections/how-to-use-section";
 import { InstallationGuide } from "@/components/ui/installation-guide";
@@ -110,11 +110,7 @@ function HomePageContent() {
       <main className="container mx-auto px-4 py-8">
         <HeroSection />
         {showInstallGuide && <InstallationGuide />}
-        <UrlInputForm
-          onSubmit={handleUrlSubmit}
-          loading={loading}
-          error={error}
-        />
+
         {videoData && (
           <VideoResultCard
             videoData={videoData}
