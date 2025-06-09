@@ -9,6 +9,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  env: {
+    YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
+  },
+};
 
-export default nextConfig
+export default nextConfig;
