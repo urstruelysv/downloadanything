@@ -44,11 +44,72 @@ const downloadRequestSchema = z.object({
     }, "Please provide a valid Instagram URL (post, reel, story, or IGTV)"),
 });
 
+// Add these functions before the POST handler
+
+function isValidInstagramUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const validDomains = [
+      "instagram.com",
+      "www.instagram.com",
+      "instagr.am",
+      "www.instagr.am",
+    ];
+
+    if (!validDomains.includes(urlObj.hostname)) {
+      return false;
+    }
+
+    // Check for valid Instagram post/reel/story patterns
+    const path = urlObj.pathname;
+    const validPatterns = [
+      /^\/p\/[\w-]+/i, // Posts
+      /^\/reel\/[\w-]+/i, // Reels
+      /^\/stories\/[\w-]+\/\d+/i, // Stories
+    ];
+
+    return validPatterns.some((pattern) => pattern.test(path));
+  } catch {
+    return false;
+  }
+}
+
+async function validateEnvironment(): Promise<void> {
+  const ytdlpAvailable = await checkYtDlpAvailable();
+  if (!ytdlpAvailable) {
+    throw new Error("yt-dlp is not installed or not accessible");
+  }
+}
+
+function buildYtDlpArgs(
+  url: string,
+  format: string,
+  quality: string,
+  outputTemplate: string
+): string[] {
+  return [
+    "--no-warnings",
+    "--no-playlist",
+    "--max-filesize",
+    "500M",
+    "-o",
+    outputTemplate,
+    "-f",
+    format,
+    "--merge-output-format",
+    "mp4",
+    "--prefer-ffmpeg",
+    "--postprocessor-args",
+    "-c:v libx264 -c:a aac -b:a 192k -preset ultrafast",
+    url,
+  ];
+}
+
 export async function POST(request: NextRequest) {
   let requestBody: any;
 
   try {
-    // Parse request body
+    // Parse request body with better error handling
     try {
       requestBody = await request.json();
     } catch (parseError) {
@@ -56,22 +117,34 @@ export async function POST(request: NextRequest) {
         {
           error: "Invalid JSON in request body",
           code: "INVALID_JSON",
+          details: "Please ensure your request contains valid JSON",
         },
         { status: 400 }
       );
     }
 
-    // Validate input
+    // Log the request for debugging
+    console.log("Received request:", requestBody);
+
+    // Validate input with detailed error handling
     let validatedData;
     try {
       validatedData = downloadRequestSchema.parse(requestBody);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
+        console.log("Validation errors:", validationError.errors);
         return NextResponse.json(
           {
             error: "Invalid request parameters",
             code: "VALIDATION_ERROR",
-            details: validationError.errors,
+            details: validationError.errors.map((err) => ({
+              field: err.path.join("."),
+              message: err.message,
+              received:
+                err.code === "invalid_type"
+                  ? typeof requestBody[err.path[0]]
+                  : requestBody[err.path[0]],
+            })),
           },
           { status: 400 }
         );
@@ -80,18 +153,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { url } = validatedData;
+    console.log("Validated data:", { url });
 
-    // Environment checks
-    const ytdlpAvailable = await checkYtDlpAvailable();
-    if (!ytdlpAvailable) {
+    // Enhanced URL validation for Instagram specifically
+    if (!isValidInstagramUrl(url)) {
       return NextResponse.json(
         {
-          error: "yt-dlp is not installed or not accessible",
-          code: "YTDLP_NOT_FOUND",
+          error: "Invalid Instagram URL format",
+          code: "INVALID_INSTAGRAM_URL",
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
+
+    // Environment checks
+    await validateEnvironment();
 
     // Setup temp directory
     await setupTempDirectory();
@@ -107,8 +183,15 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          // First get video info to get the title
+          const videoInfo = await getVideoInfo(url);
+          const safeTitle = sanitizeFilename(videoInfo.title);
+          const finalFilename = `${safeTitle}.mp4`;
+
           const fileBuffer = await downloadWithYtDlp(
             url,
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "720p",
             outputTemplate,
             timestamp,
             (progress) => {
@@ -121,9 +204,16 @@ export async function POST(request: NextRequest) {
             }
           );
 
-          // Send the final file
+          // Send the final file with proper metadata
           controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "complete" }) + "\n")
+            encoder.encode(
+              JSON.stringify({
+                type: "complete",
+                filename: finalFilename,
+                title: videoInfo.title,
+                site: "Instagram",
+              }) + "\n"
+            )
           );
           controller.enqueue(fileBuffer);
           controller.close();
@@ -201,6 +291,8 @@ async function setupTempDirectory(): Promise<void> {
 
 async function downloadWithYtDlp(
   url: string,
+  format: string,
+  quality: string,
   outputTemplate: string,
   timestamp: number,
   onProgress: (progress: number) => void
@@ -214,17 +306,19 @@ async function downloadWithYtDlp(
       "-o",
       outputTemplate,
       "-f",
-      CONFIG.OPTIMAL_FORMAT,
+      format,
       "--merge-output-format",
       "mp4",
       "--prefer-ffmpeg",
       "--postprocessor-args",
-      "-c:v libx264 -c:a aac -b:a 192k -preset ultrafast",
+      "-c:v libx264 -c:a aac -b:a 192k -preset ultrafast -movflags +faststart",
       url,
     ];
 
-    console.log("Executing Instagram download:", {
+    console.log("Executing yt-dlp:", {
       url,
+      format,
+      quality,
       timestamp,
       args: ytdlArgs,
     });
@@ -347,4 +441,48 @@ export async function cleanup() {
   } catch (error) {
     console.error("Cleanup failed:", error);
   }
+}
+
+// Add these new functions
+async function getVideoInfo(url: string): Promise<{ title: string }> {
+  return new Promise((resolve, reject) => {
+    const ytdlProcess = spawn("yt-dlp", [
+      "--no-warnings",
+      "--dump-json",
+      "--no-playlist",
+      url,
+    ]);
+
+    let stdout = "";
+    let stderr = "";
+
+    ytdlProcess.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    ytdlProcess.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    ytdlProcess.on("close", (code: number) => {
+      if (code !== 0) {
+        reject(new Error(`Failed to get video info: ${stderr}`));
+        return;
+      }
+
+      try {
+        const info = JSON.parse(stdout);
+        resolve({ title: info.title || "Instagram Video" });
+      } catch (error) {
+        reject(new Error("Failed to parse video info"));
+      }
+    });
+  });
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename
+    .replace(/[<>:"/\\|?*]/g, "_") // Replace invalid characters
+    .replace(/\s+/g, "_") // Replace spaces with underscores
+    .substring(0, 100); // Limit length
 }

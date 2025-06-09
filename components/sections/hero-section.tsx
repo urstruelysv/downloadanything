@@ -37,14 +37,26 @@ export function HeroSection() {
 
   // ---------------------------------------------------
   // 2) State + handler for the URL-input form:
+  const getPlatformFromUrl = (url: string): string => {
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      return "youtube";
+    } else if (url.includes("instagram.com") || url.includes("instagr.am")) {
+      return "instagram";
+    } else if (url.includes("tiktok.com") || url.includes("vm.tiktok.com")) {
+      return "tiktok";
+    }
+    return "youtube"; // default to youtube
+  };
+
   const handleUrlSubmit = async (url: string) => {
     setError("");
     setLoading(true);
     setIsUrlVerified(false);
 
     try {
+      const platform = getPlatformFromUrl(url);
       // First verify the URL by fetching video info
-      const response = await fetch("/api/video-info", {
+      const response = await fetch(`/api/video-info?platform=${platform}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -71,29 +83,20 @@ export function HeroSection() {
     }
   };
 
-  const handleDownload = async (format: string, quality: string) => {
+  const handleDownload = async () => {
     setError("");
     setLoading(true);
 
     try {
-      const requestBody = {
-        url: url,
-      };
-
-      // Determine the correct endpoint based on the URL
-      let endpoint = "/api/download-youtube";
-      if (url.includes("instagram.com") || url.includes("instagr.am")) {
-        endpoint = "/api/download-instagram";
-      } else if (url.includes("tiktok.com") || url.includes("vm.tiktok.com")) {
-        endpoint = "/api/download-tiktok";
-      }
+      const platform = getPlatformFromUrl(url);
+      const endpoint = `/api/download-${platform}`;
 
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ url }),
       });
 
       if (!response.ok) {
@@ -149,7 +152,7 @@ export function HeroSection() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = `instagram_video_${Date.now()}.mp4`;
+      link.download = `${platform}_video_${Date.now()}.mp4`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -405,35 +408,35 @@ export function HeroSection() {
       {/* Video Preview and Options - Only show after URL verification */}
       {isUrlVerified && (
         <div className="mt-8 w-full max-w-4xl mx-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
             <div className="p-6">
               <VideoPreview
                 url={url}
-                onDownload={() => handleDownload("mp4", "1080p")}
+                onDownload={handleDownload}
                 loading={loading}
                 error={error}
               />
 
               {/* Download Button with Progress */}
               <button
-                onClick={() => handleDownload("mp4", "1080p")}
+                onClick={handleDownload}
                 disabled={loading}
                 className={`w-full py-4 px-6 rounded-lg text-white font-medium flex items-center justify-center transition-all duration-300 relative overflow-hidden ${
                   loading
-                    ? "bg-blue-400 cursor-not-allowed"
-                    : "bg-blue-500 hover:bg-blue-600 hover:shadow-lg"
+                    ? "bg-blue-500/80 dark:bg-blue-600/80 cursor-not-allowed"
+                    : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 hover:shadow-lg dark:hover:shadow-blue-500/20"
                 }`}
               >
                 {loading ? (
                   <>
                     <div
-                      className="absolute inset-0 bg-blue-600 transition-all duration-300 ease-in-out"
+                      className="absolute inset-0 bg-blue-600/90 dark:bg-blue-700/90 transition-all duration-300 ease-in-out"
                       style={{ width: `${progress}%` }}
                     />
                     <div className="relative z-10 flex items-center justify-center w-full">
-                      <div className="w-full max-w-xs bg-white/20 rounded-full h-2">
+                      <div className="w-full max-w-xs bg-white/20 dark:bg-white/10 rounded-full h-2">
                         <div
-                          className="bg-white h-2 rounded-full transition-all duration-300 ease-in-out"
+                          className="bg-white dark:bg-blue-200 h-2 rounded-full transition-all duration-300 ease-in-out"
                           style={{ width: `${progress}%` }}
                         />
                       </div>
@@ -450,8 +453,8 @@ export function HeroSection() {
               {/* Error message */}
               {error && (
                 <div className="mt-4">
-                  <div className="flex items-start gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2 bg-red-50/80 dark:bg-red-900/20 backdrop-blur-sm border border-red-200/50 dark:border-red-700/50 rounded-lg p-3">
+                    <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700 dark:text-red-300">
                       {error}
                     </p>
