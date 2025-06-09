@@ -72,46 +72,49 @@ export async function POST(request: NextRequest) {
   await ensureYtDlp();
   await fs.mkdir(CONFIG.TEMP_DIR, { recursive: true });
 
-  const videoId = extractVideoId(data.url)!;
-  const meta = getFileMetadata(data.format, data.quality, videoId);
-  const outputTemplate = path.join(CONFIG.TEMP_DIR, `${videoId}-%(ext)s`);
+  try {
+    const videoInfo = await getVideoInfo(data.url);
+    const safeTitle = sanitizeFilename(videoInfo.title);
+    const finalFilename = `YouTube_${safeTitle}.mp4`;
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(ctrl) {
-      try {
-        const buffer = await runYtDlp(
-          data.url,
-          data.format,
-          data.quality,
-          outputTemplate,
-          (progress) => {
-            ctrl.enqueue(encoder.encode(JSON.stringify({ progress }) + "\n"));
-          }
-        );
-        ctrl.enqueue(
-          encoder.encode(
-            JSON.stringify({
-              type: "complete",
-              filename: meta.filename,
-              title: meta.filename,
-            }) + "\n"
-          )
-        );
-        ctrl.enqueue(buffer);
-        ctrl.close();
-      } catch (e) {
-        ctrl.error(e);
+    // Generate a unique base name for the temporary file
+    const uniqueBaseName = `${Date.now()}_yt_temp`;
+    const outputTemplate = path.join(
+      CONFIG.TEMP_DIR,
+      `${uniqueBaseName}.%(ext)s`
+    );
+
+    console.log(`[YouTube Route] Using outputTemplate: ${outputTemplate}`);
+
+    const fileBuffer = await runYtDlp(
+      data.url,
+      data.format,
+      data.quality,
+      outputTemplate,
+      (progress) => {
+        // Progress is logged but not streamed to client in this model
+        console.log(`[YouTube Route] Download progress: ${progress}%`);
       }
-    },
-  });
+    );
 
-  return new NextResponse(stream, {
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Transfer-Encoding": "chunked",
-    },
-  });
+    console.log(`[YouTube Route] Contents of TEMP_DIR (${CONFIG.TEMP_DIR}):`);
+    const tempDirContents = await fs.readdir(CONFIG.TEMP_DIR);
+    console.log(tempDirContents);
+
+    return new NextResponse(fileBuffer, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": `attachment; filename="${finalFilename}"`,
+        "Content-Length": fileBuffer.length.toString(),
+      },
+    });
+  } catch (e) {
+    console.error("YouTube download error:", e);
+    return NextResponse.json(
+      { error: (e as Error).message || "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 async function ensureYtDlp() {
@@ -142,7 +145,15 @@ function runYtDlp(
           "--audio-quality",
           quality === "320kbps" ? "0" : "5",
         ]
-      : ["-f", getFormatSelector(quality)];
+      : [
+          "-f",
+          "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a][acodec^=mp4a]/best[ext=mp4]/best", // Prioritize H.264 MP4 video and AAC M4A audio, then generic best MP4, then general best
+          "--merge-output-format",
+          "mp4",
+          "--prefer-ffmpeg",
+          "--postprocessor-args",
+          "-c:v libx264 -c:a aac -b:a 192k -preset ultrafast -movflags +faststart",
+        ];
   args.unshift(
     "--no-warnings",
     "--no-playlist",
@@ -162,20 +173,101 @@ function runYtDlp(
     });
     proc.stderr?.on("data", (d) => (stderr += d.toString()));
     proc.on("close", async (code) => {
-      if (code !== 0) return reject(new Error(stderr || `code ${code}`));
+      if (code !== 0) {
+        console.error("yt-dlp process failed:", { code, stderr });
+        const errorMessage = stderr.includes("command not found")
+          ? "yt-dlp not found. Please ensure it's installed and in your PATH."
+          : stderr || `Download failed with exit code ${code}`;
+        return reject(new Error(errorMessage));
+      }
       // read back the file we just wrote
       const files = await fs.readdir(CONFIG.TEMP_DIR);
+      const baseFileName = path.basename(out).split(".%")[0]; // Get the base name before %(ext)s
       const fname = files.find(
         (f) =>
-          f.startsWith(url.split("v=")[1] || "") ||
+          f.startsWith(baseFileName) &&
           f.endsWith(format === "audio" ? ".mp3" : ".mp4")
       );
-      if (!fname) return reject(new Error("No output file"));
-      const buf = await fs.readFile(path.join(CONFIG.TEMP_DIR, fname));
-      await fs.unlink(path.join(CONFIG.TEMP_DIR, fname));
-      resolve(buf);
+
+      if (!fname)
+        return reject(new Error("No output file found after download."));
+
+      const downloadedFile = path.join(CONFIG.TEMP_DIR, fname);
+      try {
+        const buf = await fs.readFile(downloadedFile);
+        // await fs.unlink(downloadedFile); // COMMENTED OUT: KEEP FILE FOR DEBUGGING
+        resolve(buf);
+      } catch (fileReadError) {
+        console.error(
+          "Error reading or deleting temporary file:",
+          fileReadError
+        );
+        // await fs.unlink(downloadedFile).catch(() => {}); // COMMENTED OUT: KEEP FILE FOR DEBUGGING
+        reject(
+          new Error(
+            `Failed to read or clean up downloaded file: ${
+              (fileReadError as Error).message
+            }`
+          )
+        );
+      }
+    });
+    proc.on("error", (err) => {
+      console.error("Failed to spawn yt-dlp:", err);
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(
+          new Error(
+            "yt-dlp command not found. Please ensure yt-dlp is installed and accessible in your system's PATH."
+          )
+        );
+      } else {
+        reject(new Error(`Failed to execute yt-dlp: ${err.message}`));
+      }
     });
   });
+}
+
+async function getVideoInfo(url: string): Promise<{ title: string }> {
+  return new Promise((resolve, reject) => {
+    const ytdlProcess = spawn("yt-dlp", [
+      "--no-warnings",
+      "--dump-json",
+      "--no-playlist",
+      url,
+    ]);
+
+    let stdout = "";
+    let stderr = "";
+
+    ytdlProcess.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    ytdlProcess.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    ytdlProcess.on("close", (code: number) => {
+      if (code !== 0) {
+        reject(new Error(`Failed to get video info: ${stderr}`));
+        return;
+      }
+
+      try {
+        const info = JSON.parse(stdout);
+        resolve({ title: info.title });
+      } catch (error) {
+        reject(new Error("Failed to parse video info"));
+      }
+    });
+  });
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename
+    .replace(/[<>:"/\\|?*]/g, "_") // Replace invalid characters
+    .replace(/\s+/g, "_") // Replace spaces with underscores
+    .substring(0, 100); // Limit length
 }
 
 function extractVideoId(u: string): string | null {
@@ -187,22 +279,4 @@ function extractVideoId(u: string): string | null {
   } catch {
     return null;
   }
-}
-
-function getFormatSelector(q: string) {
-  const map: Record<string, string> = {
-    "1080p": "bestvideo[height<=1080]+bestaudio/best",
-    "720p": "bestvideo[height<=720]+bestaudio/best",
-    "480p": "bestvideo[height<=480]+bestaudio/best",
-    "360p": "bestvideo[height<=360]+bestaudio/best",
-  };
-  return map[q] || "best";
-}
-
-function getFileMetadata(format: string, quality: string, id: string) {
-  const t = Date.now();
-  if (format === "audio") {
-    return { mime: "audio/mpeg", filename: `audio_${id}_${quality}_${t}.mp3` };
-  }
-  return { mime: "video/mp4", filename: `video_${id}_${quality}_${t}.mp4` };
 }

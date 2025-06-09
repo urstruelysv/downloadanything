@@ -172,63 +172,52 @@ export async function POST(request: NextRequest) {
     // Setup temp directory
     await setupTempDirectory();
 
-    const timestamp = Date.now();
-    const outputTemplate = path.join(
-      CONFIG.TEMP_DIR,
-      `instagram_${timestamp}.%(ext)s`
-    );
+    try {
+      const videoInfo = await getVideoInfo(url);
+      const safeTitle = sanitizeFilename(videoInfo.title);
+      const finalFilename = `Instagram_${safeTitle}.mp4`;
 
-    // Create a response stream for real-time progress
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          // First get video info to get the title
-          const videoInfo = await getVideoInfo(url);
-          const safeTitle = sanitizeFilename(videoInfo.title);
-          const finalFilename = `${safeTitle}.mp4`;
+      // Generate a unique base name for the temporary file
+      const uniqueBaseName = `${Date.now()}_ig_temp`;
+      const outputTemplate = path.join(
+        CONFIG.TEMP_DIR,
+        `${uniqueBaseName}.%(ext)s`
+      );
 
-          const fileBuffer = await downloadWithYtDlp(
-            url,
-            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "720p",
-            outputTemplate,
-            timestamp,
-            (progress) => {
-              // Send progress updates
-              controller.enqueue(
-                encoder.encode(
-                  JSON.stringify({ type: "progress", progress }) + "\n"
-                )
-              );
-            }
-          );
+      console.log(`[Instagram Route] Using outputTemplate: ${outputTemplate}`);
 
-          // Send the final file with proper metadata
-          controller.enqueue(
-            encoder.encode(
-              JSON.stringify({
-                type: "complete",
-                filename: finalFilename,
-                title: videoInfo.title,
-                site: "Instagram",
-              }) + "\n"
-            )
-          );
-          controller.enqueue(fileBuffer);
-          controller.close();
-        } catch (error) {
-          controller.error(error);
+      const fileBuffer = await downloadWithYtDlp(
+        url,
+        "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a][acodec^=mp4a]/best[ext=mp4]/best",
+        "720p",
+        outputTemplate,
+        Date.now(),
+        (progress) => {
+          // Progress is logged but not streamed to client in this model
+          console.log(`[Instagram Route] Download progress: ${progress}%`);
         }
-      },
-    });
+      );
 
-    return new NextResponse(stream, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Transfer-Encoding": "chunked",
-      },
-    });
+      console.log(
+        `[Instagram Route] Contents of TEMP_DIR (${CONFIG.TEMP_DIR}):`
+      );
+      const tempDirContents = await fs.readdir(CONFIG.TEMP_DIR);
+      console.log(tempDirContents);
+
+      return new NextResponse(fileBuffer, {
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Disposition": `attachment; filename="${finalFilename}"`,
+          "Content-Length": fileBuffer.length.toString(),
+        },
+      });
+    } catch (e) {
+      console.error("Instagram download error:", e);
+      return NextResponse.json(
+        { error: (e as Error).message || "Internal server error" },
+        { status: 500 }
+      );
+    }
   } catch (error) {
     console.error("Instagram API error:", {
       error: error instanceof Error ? error.message : "Unknown error",
@@ -306,7 +295,7 @@ async function downloadWithYtDlp(
       "-o",
       outputTemplate,
       "-f",
-      format,
+      "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a][acodec^=mp4a]/best[ext=mp4]/best",
       "--merge-output-format",
       "mp4",
       "--prefer-ffmpeg",
@@ -350,20 +339,48 @@ async function downloadWithYtDlp(
     ytdlProcess.on("close", async (code: number) => {
       if (code !== 0) {
         console.error("yt-dlp failed:", { code, stderr });
-        reject(new Error(`Download failed: ${getErrorMessage(stderr, code)}`));
+        const errorMessage = stderr.includes("command not found")
+          ? "yt-dlp not found. Please ensure it's installed and in your PATH."
+          : stderr || `Download failed with exit code ${code}`;
+        reject(new Error(errorMessage));
         return;
       }
 
       try {
-        const fileBuffer = await processDownloadedFile(timestamp);
+        const files = await fs.readdir(CONFIG.TEMP_DIR);
+        const baseFileName = path.basename(outputTemplate).split(".")[0]; // Get the base name before %(ext)s
+        const fname = files.find(
+          (f) =>
+            f.startsWith(baseFileName) &&
+            f.endsWith(format === "audio" ? ".mp3" : ".mp4")
+        );
+
+        if (!fname)
+          return reject(new Error("No output file found after download."));
+
+        const downloadedFile = path.join(CONFIG.TEMP_DIR, fname);
+        const fileBuffer = await fs.readFile(downloadedFile);
+        // await fs.unlink(downloadedFile).catch(console.error); // Comment out to keep file for debugging
         resolve(fileBuffer);
       } catch (fileError) {
-        reject(new Error(`File processing failed: ${fileError}`));
+        console.error("Error processing downloaded file:", fileError);
+        reject(
+          new Error(`File processing failed: ${(fileError as Error).message}`)
+        );
       }
     });
 
     ytdlProcess.on("error", (error: Error) => {
-      reject(new Error(`Failed to start yt-dlp: ${error.message}`));
+      console.error("Failed to spawn yt-dlp:", error);
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(
+          new Error(
+            "yt-dlp command not found. Please ensure yt-dlp is installed and accessible in your system's PATH."
+          )
+        );
+      } else {
+        reject(new Error(`Failed to execute yt-dlp: ${error.message}`));
+      }
     });
 
     // Timeout handling
@@ -392,10 +409,10 @@ async function processDownloadedFile(timestamp: number): Promise<Buffer> {
 
   try {
     const fileBuffer = await fs.readFile(downloadedFile);
-    await fs.unlink(downloadedFile).catch(console.error);
+    // await fs.unlink(downloadedFile).catch(console.error); // Comment out to keep file for debugging
     return fileBuffer;
   } catch (error) {
-    await fs.unlink(downloadedFile).catch(console.error);
+    // await fs.unlink(downloadedFile).catch(console.error); // Comment out to keep file for debugging
     throw error;
   }
 }
@@ -485,4 +502,26 @@ function sanitizeFilename(filename: string): string {
     .replace(/[<>:"/\\|?*]/g, "_") // Replace invalid characters
     .replace(/\s+/g, "_") // Replace spaces with underscores
     .substring(0, 100); // Limit length
+}
+
+function getFormatSelector(q: string) {
+  const map: Record<string, string> = {
+    "1080p":
+      "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]",
+    "720p": "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4]",
+    "480p": "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4]",
+    "360p": "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4]",
+  };
+  return map[q] || "best[ext=mp4]";
+}
+
+function getFileMetadata(format: string, quality: string, id: string) {
+  const t = Date.now();
+  if (format === "audio") {
+    return { mime: "audio/mpeg", filename: `audio_${id}_${quality}_${t}.mp3` };
+  }
+  return {
+    mime: "video/mp4",
+    filename: `Instagram_video_${id}_${quality}_${t}.mp4`,
+  };
 }
