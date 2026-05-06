@@ -12,7 +12,6 @@ export function spawnArgs(url: string): string[] {
   return [
     "-J",
     "--no-warnings",
-    "--no-call-home",
     "--no-playlist",
     "--socket-timeout",
     "20",
@@ -195,7 +194,6 @@ export async function runDownload(url: string, formatId: string): Promise<Downlo
     "-o",
     "-",
     "--no-warnings",
-    "--no-call-home",
     "--no-playlist",
     url,
   ];

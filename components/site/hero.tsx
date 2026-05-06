@@ -4,6 +4,7 @@ import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { Icon, LogoLockup } from "./logo";
 import { Platform } from "./platforms";
+import { useAuth } from "@/hooks/use-auth";
 import type { DownloadRecord } from "./downloader-modal";
 
 const VIDEO_SRC =
@@ -238,45 +239,7 @@ export const Hero = ({
               </a>
             ))}
           </div>
-          <div
-            className="fade-rise-2"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flex: "0 0 auto",
-            }}
-          >
-            <a
-              href="#"
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.7)",
-                textDecoration: "none",
-                padding: "8px 14px",
-              }}
-            >
-              Sign in
-            </a>
-            <button
-              className="btn"
-              onClick={() => onOpenDownloader("")}
-              style={{
-                background: "white",
-                color: "var(--ink)",
-                borderRadius: 999,
-                padding: "10px 18px",
-                fontSize: 13,
-                fontWeight: 500,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Icon name="download" size={14} stroke="var(--ink)" />
-              Start downloading
-            </button>
-          </div>
+          <NavAuth onOpenDownloader={onOpenDownloader} />
         </div>
       </nav>
 
@@ -451,6 +414,49 @@ const HeroDownloaderTrigger = ({
       >
         <Icon name="download" size={16} stroke="white" />
         Download
+      </button>
+    </div>
+  );
+};
+
+const NavAuth = ({ onOpenDownloader }: { onOpenDownloader: (url: string) => void }) => {
+  const { user, loading, signOut } = useAuth();
+  if (loading) return <div style={{ width: 120 }} />;
+  if (user) {
+    return (
+      <div className="fade-rise-2" style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
+        <a
+          href="/account"
+          style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textDecoration: "none", padding: "8px 14px" }}
+        >
+          Account
+        </a>
+        <button
+          className="btn"
+          onClick={() => onOpenDownloader("")}
+          style={{ background: "white", color: "var(--ink)", borderRadius: 999, padding: "10px 18px", fontSize: 13, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          <Icon name="download" size={14} stroke="var(--ink)" />
+          Download
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="fade-rise-2" style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
+      <a
+        href="/login"
+        style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", textDecoration: "none", padding: "8px 14px" }}
+      >
+        Sign in
+      </a>
+      <button
+        className="btn"
+        onClick={() => onOpenDownloader("")}
+        style={{ background: "white", color: "var(--ink)", borderRadius: 999, padding: "10px 18px", fontSize: 13, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 6 }}
+      >
+        <Icon name="download" size={14} stroke="var(--ink)" />
+        Start downloading
       </button>
     </div>
   );

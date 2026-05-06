@@ -10,12 +10,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const sb = supabaseBrowser();
-
   const sendMagicLink = async () => {
     if (!email.trim()) return;
     setLoading(true);
     setError("");
+    const sb = supabaseBrowser();
     const { error: err } = await sb.auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: `${location.origin}/auth/callback` },
@@ -30,6 +29,7 @@ export default function LoginPage() {
 
   const signInGoogle = async () => {
     setError("");
+    const sb = supabaseBrowser();
     const { error: err } = await sb.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${location.origin}/auth/callback` },

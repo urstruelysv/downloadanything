@@ -25,10 +25,9 @@ export default function AccountPage() {
   const [history, setHistory] = useState<Download[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const sb = supabaseBrowser();
-
   useEffect(() => {
     (async () => {
+      const sb = supabaseBrowser();
       const { data } = await sb.auth.getUser();
       if (!data.user) {
         window.location.href = "/login?next=/account";
@@ -53,7 +52,7 @@ export default function AccountPage() {
   }, []);
 
   const signOut = async () => {
-    await sb.auth.signOut();
+    await supabaseBrowser().auth.signOut();
     window.location.href = "/";
   };
 
