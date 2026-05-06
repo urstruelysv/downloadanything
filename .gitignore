@@ -53,6 +53,7 @@ bfg.jar
 temp/
 *.mp4
 worker/data/
+supabase/.temp/
 
 # package managers (keep ONE — bun.lock)
 pnpm-lock.yaml
