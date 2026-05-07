@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
+    "sync-shared": "cp ../shared/types.ts src/shared-types.ts && cp ../shared/errors.ts src/shared-errors.ts",
+    "predev": "npm run sync-shared",
+    "prebuild": "npm run sync-shared",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js"

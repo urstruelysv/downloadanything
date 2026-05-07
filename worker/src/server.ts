@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ytdlpExtract, runDownload } from "./extractor.js";
 import { uploadToR2 } from "./r2.js";
-import { spawnArgs } from "./extractor.js";
 
 const app = new Hono();
 
@@ -17,8 +16,9 @@ const STREAM_LIMIT_BYTES = 50 * 1024 * 1024;
 
 app.use("*", async (c, next) => {
   if (c.req.path === "/healthz") return next();
-  const t = c.req.header("x-worker-token");
-  if (t !== TOKEN) return c.json({ error: "unauthorized" }, 401);
+  const auth = c.req.header("authorization");
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : c.req.header("x-worker-token");
+  if (token !== TOKEN) return c.json({ error: "unauthorized" }, 401);
   return next();
 });
 
@@ -85,5 +85,3 @@ app.post("/download", async (c) => {
 const port = Number(process.env.PORT ?? 8080);
 serve({ fetch: app.fetch, port });
 console.log(`worker listening on :${port}`);
-
-export { spawnArgs };

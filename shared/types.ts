@@ -20,6 +20,17 @@ export type ContentType =
 
 export type Delivery = "direct" | "worker-stream" | "worker-r2";
 
+export type ErrorCode =
+  | "invalid_url"
+  | "unsupported_platform"
+  | "unavailable"
+  | "quota_exceeded"
+  | "rate_limited"
+  | "auth_required"
+  | "degraded"
+  | "network"
+  | "internal";
+
 export type Format = {
   formatId: string;
   quality: string;
@@ -44,22 +55,3 @@ export type ExtractResult = {
   duration?: number;
   items: ExtractItem[];
 };
-
-export type Plan = "free" | "subscribed";
-
-export type QuotaResult = {
-  allowed: boolean;
-  remaining: number;
-  plan: Plan;
-  reason?: "quota_exceeded" | "rate_limited";
-};
-
-export type ApiError =
-  | "invalid_url"
-  | "unsupported_platform"
-  | "unavailable"
-  | "quota_exceeded"
-  | "rate_limited"
-  | "auth_required"
-  | "degraded"
-  | "internal";

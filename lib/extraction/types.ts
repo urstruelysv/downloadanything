@@ -5,4 +5,4 @@ export type {
   Format,
   ExtractItem,
   ExtractResult,
-} from "./shared-types.js";
+} from "@/shared/types";

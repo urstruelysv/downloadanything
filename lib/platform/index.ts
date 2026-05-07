@@ -1,15 +1,18 @@
-import type { ContentType, Platform } from "@/lib/types";
+export type { Platform, ContentType } from "@/shared/types";
+import type { Platform, ContentType } from "@/shared/types";
 
-type Detected = { platform: Platform; contentType: ContentType };
-
-const RULES: Array<{
-  platform: Platform;
+export type PlatformMeta = {
+  label: string;
+  color: string;
   hostMatch: RegExp;
   contentRules?: Array<{ pathMatch: RegExp; contentType: ContentType }>;
   defaultContentType: ContentType;
-}> = [
-  {
-    platform: "youtube",
+};
+
+const PLATFORM_REGISTRY: Record<Exclude<Platform, "generic">, PlatformMeta> = {
+  youtube: {
+    label: "YouTube",
+    color: "#FF0000",
     hostMatch: /(?:^|\.)((?:m\.)?youtube\.com|youtu\.be|music\.youtube\.com)$/,
     contentRules: [
       { pathMatch: /^\/playlist/, contentType: "playlist" },
@@ -18,8 +21,9 @@ const RULES: Array<{
     ],
     defaultContentType: "video",
   },
-  {
-    platform: "instagram",
+  instagram: {
+    label: "Instagram",
+    color: "#E1306C",
     hostMatch: /(?:^|\.)(instagram\.com|instagr\.am)$/,
     contentRules: [
       { pathMatch: /^\/(reel|reels)\//, contentType: "video" },
@@ -28,23 +32,27 @@ const RULES: Array<{
     ],
     defaultContentType: "video",
   },
-  {
-    platform: "tiktok",
+  tiktok: {
+    label: "TikTok",
+    color: "#000000",
     hostMatch: /(?:^|\.)(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)$/,
     defaultContentType: "video",
   },
-  {
-    platform: "twitter",
+  twitter: {
+    label: "Twitter / X",
+    color: "#1DA1F2",
     hostMatch: /(?:^|\.)(twitter\.com|x\.com|t\.co|mobile\.twitter\.com)$/,
     defaultContentType: "video",
   },
-  {
-    platform: "facebook",
+  facebook: {
+    label: "Facebook",
+    color: "#1877F2",
     hostMatch: /(?:^|\.)(facebook\.com|fb\.watch|fb\.com|m\.facebook\.com)$/,
     defaultContentType: "video",
   },
-  {
-    platform: "reddit",
+  reddit: {
+    label: "Reddit",
+    color: "#FF4500",
     hostMatch: /(?:^|\.)(reddit\.com|redd\.it|v\.redd\.it|i\.redd\.it)$/,
     contentRules: [
       { pathMatch: /\.(jpg|jpeg|png|webp|gif)$/i, contentType: "photo" },
@@ -52,26 +60,33 @@ const RULES: Array<{
     ],
     defaultContentType: "video",
   },
-  {
-    platform: "pinterest",
+  pinterest: {
+    label: "Pinterest",
+    color: "#E60023",
     hostMatch: /(?:^|\.)(pinterest\.com|pin\.it)$/,
     defaultContentType: "photo",
   },
-  {
-    platform: "vimeo",
+  vimeo: {
+    label: "Vimeo",
+    color: "#1AB7EA",
     hostMatch: /(?:^|\.)(vimeo\.com|player\.vimeo\.com)$/,
     defaultContentType: "video",
   },
-  {
-    platform: "soundcloud",
+  soundcloud: {
+    label: "SoundCloud",
+    color: "#FF5500",
     hostMatch: /(?:^|\.)(soundcloud\.com|on\.soundcloud\.com)$/,
     defaultContentType: "audio",
   },
-];
+};
 
 const IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif|bmp|tiff|avif)(\?|$)/i;
+const PRIVATE_HOSTS =
+  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|169\.254\.|0\.0\.0\.0|::1)/i;
 
-export function detect(url: string): Detected | null {
+export type DetectResult = { platform: Platform; contentType: ContentType };
+
+export function detect(url: string): DetectResult | null {
   let parsed: URL;
   try {
     parsed = new URL(url.trim());
@@ -83,12 +98,14 @@ export function detect(url: string): Detected | null {
   const host = parsed.hostname.toLowerCase();
   const pathAndQuery = parsed.pathname + parsed.search;
 
-  for (const rule of RULES) {
-    if (!rule.hostMatch.test(host)) continue;
-    const matched = rule.contentRules?.find((r) => r.pathMatch.test(pathAndQuery));
+  for (const [platform, meta] of Object.entries(PLATFORM_REGISTRY)) {
+    if (!meta.hostMatch.test(host)) continue;
+    const matched = meta.contentRules?.find((r) =>
+      r.pathMatch.test(pathAndQuery),
+    );
     return {
-      platform: rule.platform,
-      contentType: matched?.contentType ?? rule.defaultContentType,
+      platform: platform as Platform,
+      contentType: matched?.contentType ?? meta.defaultContentType,
     };
   }
 
@@ -98,11 +115,30 @@ export function detect(url: string): Detected | null {
   return { platform: "generic", contentType: "unknown" };
 }
 
-export function validateUrl(url: string): boolean {
+export function validateUrl(
+  rawUrl: string,
+): { ok: true; url: string } | { ok: false; reason: string } {
+  let u: URL;
   try {
-    const u = new URL(url.trim());
-    return u.protocol === "http:" || u.protocol === "https:";
+    u = new URL(rawUrl.trim());
   } catch {
-    return false;
+    return { ok: false, reason: "invalid_url" };
   }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    return { ok: false, reason: "invalid_url" };
+  }
+  if (PRIVATE_HOSTS.test(u.hostname)) {
+    return { ok: false, reason: "invalid_url" };
+  }
+  return { ok: true, url: u.href };
+}
+
+export function supportedPlatforms(): Platform[] {
+  return Object.keys(PLATFORM_REGISTRY) as Platform[];
+}
+
+export function platformMeta(
+  p: Exclude<Platform, "generic">,
+): PlatformMeta | undefined {
+  return PLATFORM_REGISTRY[p];
 }

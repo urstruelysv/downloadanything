@@ -1,25 +1,7 @@
 import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import type { ExtractResult, Format, ExtractItem } from "./types.js";
-
-export class WorkerError extends Error {
-  constructor(public code: string, public httpStatus: number, msg?: string) {
-    super(msg ?? code);
-  }
-}
-
-export function spawnArgs(url: string): string[] {
-  return [
-    "-J",
-    "--no-warnings",
-    "--no-playlist",
-    "--socket-timeout",
-    "20",
-    "--retries",
-    "2",
-    url,
-  ];
-}
+import { ExtractError } from "./shared-errors.js";
 
 type YtFormat = {
   format_id: string;
@@ -48,13 +30,35 @@ type YtJson = {
   entries?: YtJson[];
 };
 
-export async function ytdlpExtract(url: string): Promise<ExtractResult> {
-  const json = await runYtDlpJson(url);
-  return mapResult(url, json);
+const EXTRACTOR_TO_PLATFORM: Record<string, ExtractResult["platform"]> = {
+  youtube: "youtube",
+  instagram: "instagram",
+  tiktok: "tiktok",
+  twitter: "twitter",
+  facebook: "facebook",
+  reddit: "reddit",
+  pinterest: "pinterest",
+  vimeo: "vimeo",
+  soundcloud: "soundcloud",
+};
+
+function platformFromExtractor(key?: string): ExtractResult["platform"] {
+  if (!key) return "generic";
+  const lower = key.toLowerCase();
+  for (const [match, platform] of Object.entries(EXTRACTOR_TO_PLATFORM)) {
+    if (lower.includes(match)) return platform;
+  }
+  return "generic";
 }
 
-function mapResult(url: string, j: YtJson): ExtractResult {
-  const platform = inferPlatform(url, j.extractor_key);
+export async function ytdlpExtract(url: string): Promise<ExtractResult> {
+  const json = await runYtDlpJson(url);
+  return mapResult(json);
+}
+
+function mapResult(j: YtJson): ExtractResult {
+  const platform = platformFromExtractor(j.extractor_key);
+
   if (j._type === "playlist" && j.entries?.length) {
     const items: ExtractItem[] = j.entries.map((entry, i) => ({
       id: entry.id ?? `i${i}`,
@@ -69,24 +73,21 @@ function mapResult(url: string, j: YtJson): ExtractResult {
       items,
     };
   }
+
   return {
     platform,
     contentType: "video",
     title: j.title ?? "Untitled",
     thumbnail: j.thumbnail,
     duration: j.duration,
-    items: [
-      {
-        id: j.id,
-        type: "video",
-        formats: pickFormats(j),
-      },
-    ],
+    items: [{ id: j.id, type: "video", formats: pickFormats(j) }],
   };
 }
 
 function pickFormats(j: YtJson): Format[] {
   const list = j.formats ?? [];
+  const out: Format[] = [];
+
   const muxed = list.filter(
     (f) => f.vcodec && f.vcodec !== "none" && f.acodec && f.acodec !== "none",
   );
@@ -97,7 +98,6 @@ function pickFormats(j: YtJson): Format[] {
     (f) => (!f.vcodec || f.vcodec === "none") && f.acodec && f.acodec !== "none",
   );
 
-  const out: Format[] = [];
   for (const f of muxed) {
     out.push({
       formatId: f.format_id,
@@ -109,6 +109,7 @@ function pickFormats(j: YtJson): Format[] {
       directHeaders: f.http_headers,
     });
   }
+
   for (const f of videoOnly) {
     out.push({
       formatId: `${f.format_id}+bestaudio`,
@@ -118,6 +119,7 @@ function pickFormats(j: YtJson): Format[] {
       delivery: "worker-r2",
     });
   }
+
   for (const f of audioOnly) {
     out.push({
       formatId: f.format_id,
@@ -129,6 +131,7 @@ function pickFormats(j: YtJson): Format[] {
       directHeaders: f.http_headers,
     });
   }
+
   if (out.length === 0 && j.url) {
     out.push({
       formatId: "best",
@@ -138,43 +141,42 @@ function pickFormats(j: YtJson): Format[] {
       directUrl: j.url,
     });
   }
+
   return out;
 }
 
-function inferPlatform(url: string, extractor?: string): ExtractResult["platform"] {
-  const ex = (extractor ?? "").toLowerCase();
-  if (ex.includes("youtube")) return "youtube";
-  if (ex.includes("instagram")) return "instagram";
-  if (ex.includes("tiktok")) return "tiktok";
-  if (ex.includes("twitter")) return "twitter";
-  if (ex.includes("facebook")) return "facebook";
-  if (ex.includes("reddit")) return "reddit";
-  if (ex.includes("pinterest")) return "pinterest";
-  if (ex.includes("vimeo")) return "vimeo";
-  if (ex.includes("soundcloud")) return "soundcloud";
-  return "generic";
+function spawnArgs(url: string): string[] {
+  return ["-J", "--no-warnings", "--no-playlist", "--socket-timeout", "20", "--retries", "2", url];
 }
 
 function runYtDlpJson(url: string): Promise<YtJson> {
   return new Promise((resolve, reject) => {
-    const child = spawn("yt-dlp", spawnArgs(url), { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("yt-dlp", spawnArgs(url), {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (d) => out.push(d));
     child.stderr.on("data", (d) => err.push(d));
-    child.on("error", (e) => reject(new WorkerError("degraded", 502, e.message)));
+    child.on("error", (e) =>
+      reject(new ExtractError("degraded", 502, e.message)),
+    );
     child.on("close", (code) => {
       const stderr = Buffer.concat(err).toString("utf8");
       if (code !== 0) {
         if (/private|unavailable|removed|not exist/i.test(stderr)) {
-          return reject(new WorkerError("unavailable", 404, stderr.slice(0, 200)));
+          return reject(
+            new ExtractError("unavailable", 404, stderr.slice(0, 200)),
+          );
         }
-        return reject(new WorkerError("degraded", 502, stderr.slice(0, 200)));
+        return reject(
+          new ExtractError("degraded", 502, stderr.slice(0, 200)),
+        );
       }
       try {
         resolve(JSON.parse(Buffer.concat(out).toString("utf8")));
-      } catch (e) {
-        reject(new WorkerError("degraded", 502, "yt-dlp json parse failed"));
+      } catch {
+        reject(new ExtractError("degraded", 502, "yt-dlp json parse failed"));
       }
     });
   });
@@ -187,20 +189,15 @@ export type DownloadResult = {
   sizeBytes?: number;
 };
 
-export async function runDownload(url: string, formatId: string): Promise<DownloadResult> {
-  const args = [
-    "-f",
-    formatId,
-    "-o",
-    "-",
-    "--no-warnings",
-    "--no-playlist",
-    url,
-  ];
+export async function runDownload(
+  url: string,
+  formatId: string,
+): Promise<DownloadResult> {
+  const args = ["-f", formatId, "-o", "-", "--no-warnings", "--no-playlist", url];
   const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
   child.stderr.on("data", (d) => process.stderr.write(d));
   child.on("error", (e) => {
-    throw new WorkerError("degraded", 502, e.message);
+    throw new ExtractError("degraded", 502, e.message);
   });
   return {
     stream: child.stdout,

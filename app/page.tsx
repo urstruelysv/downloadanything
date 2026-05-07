@@ -16,7 +16,7 @@ import {
 import {
   DownloaderModal,
   type DownloadRecord,
-} from "@/components/site/downloader-modal";
+} from "@/components/site/downloader";
 
 export default function HomePage() {
   const [modalOpen, setModalOpen] = useState(false);

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon, LogoLockup } from "./logo";
 import { Platform } from "./platforms";
 import { useAuth } from "@/hooks/use-auth";
-import type { DownloadRecord } from "./downloader-modal";
+import type { DownloadRecord } from "./downloader/types";
 
 const VIDEO_SRC =
   "https://videos.pexels.com/video-files/3129671/3129671-hd_1920_1080_30fps.mp4";
