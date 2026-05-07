@@ -1,44 +1,12 @@
 import { detect } from "@/lib/platform";
 import { ExtractError } from "./errors";
+import { cobaltExtract, cobaltDownload, decodeCobaltFormat } from "./cobalt";
 import type { ExtractResult } from "./types";
 
 export { ExtractError } from "./errors";
 export type { ExtractResult, Format, ExtractItem, Delivery } from "./types";
 
 const MAX_RETRIES = 2;
-
-function workerConfig() {
-  const url = process.env.WORKER_URL;
-  const token = process.env.WORKER_TOKEN;
-  if (!url || !token) {
-    throw new ExtractError("degraded", 503, "Worker not configured");
-  }
-  return { url, token };
-}
-
-async function workerFetch(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const { url, token } = workerConfig();
-  const res = await fetch(`${url}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new ExtractError(
-      data.error ?? "degraded",
-      res.status,
-      data.message,
-    );
-  }
-  return res;
-}
 
 async function retry<T>(fn: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
@@ -60,34 +28,53 @@ export async function extract(url: string): Promise<ExtractResult> {
   if (!det) throw new ExtractError("unsupported_platform", 400);
 
   return retry(async () => {
-    const res = await workerFetch("/extract", { url });
-    return (await res.json()) as ExtractResult;
+    return cobaltExtract(url, det.platform, det.contentType);
   });
 }
 
 export type DownloadResult =
   | { kind: "stream"; body: ReadableStream; headers: Headers }
-  | { kind: "r2"; r2Url: string }
-  | { kind: "redirect"; directUrl: string };
+  | { kind: "r2"; r2Url: string };
 
 export async function download(
   url: string,
   formatId: string,
   directUrl?: string,
+  directHeaders?: Record<string, string>,
+  title?: string,
+  ext?: string,
 ): Promise<DownloadResult> {
   if (directUrl) {
-    return { kind: "redirect", directUrl };
+    const res = await fetch(directUrl, {
+      headers: directHeaders ?? {},
+    });
+    if (!res.ok) {
+      throw new ExtractError("degraded", 502, `Source returned ${res.status}`);
+    }
+    const headers = new Headers();
+    const ct = res.headers.get("content-type");
+    if (ct) headers.set("content-type", ct);
+    const cl = res.headers.get("content-length");
+    if (cl) headers.set("content-length", cl);
+    return { kind: "stream", body: res.body!, headers };
   }
 
-  const res = await workerFetch("/download", { url, formatId });
-  const ct = res.headers.get("content-type") ?? "";
-
-  if (ct.includes("application/json")) {
-    const body = (await res.json()) as { r2Url: string };
-    return { kind: "r2", r2Url: body.r2Url };
+  if (decodeCobaltFormat(formatId)) {
+    const { downloadUrl, filename } = await cobaltDownload(url, formatId);
+    const res = await fetch(downloadUrl);
+    if (!res.ok) {
+      throw new ExtractError("degraded", 502, `Download source returned ${res.status}`);
+    }
+    const headers = new Headers();
+    const ct = res.headers.get("content-type");
+    if (ct) headers.set("content-type", ct);
+    const cl = res.headers.get("content-length");
+    if (cl) headers.set("content-length", cl);
+    const ecl = res.headers.get("estimated-content-length");
+    if (!cl && ecl) headers.set("content-length", ecl);
+    headers.set("content-disposition", `attachment; filename="${filename}"`);
+    return { kind: "stream", body: res.body!, headers };
   }
 
-  const headers = new Headers(res.headers);
-  headers.delete("authorization");
-  return { kind: "stream", body: res.body!, headers };
+  throw new ExtractError("internal", 400, `Unknown format: ${formatId}`);
 }

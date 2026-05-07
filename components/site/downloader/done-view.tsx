@@ -2,9 +2,11 @@ import { Icon } from "../logo";
 
 export const DoneView = ({
   title,
+  remaining,
   onReset,
 }: {
   title: string;
+  remaining: number | null;
   onReset: () => void;
 }) => (
   <div
@@ -40,6 +42,13 @@ export const DoneView = ({
       <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
         {title}
       </div>
+      {remaining !== null && (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+          {remaining === Infinity
+            ? "Unlimited downloads"
+            : `${remaining} download${remaining === 1 ? "" : "s"} left today`}
+        </div>
+      )}
     </div>
     <button className="btn btn-ghost" onClick={onReset}>
       Download another

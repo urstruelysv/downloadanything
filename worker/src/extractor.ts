@@ -189,19 +189,32 @@ export type DownloadResult = {
   sizeBytes?: number;
 };
 
-export async function runDownload(
+export function runDownload(
   url: string,
   formatId: string,
+  title?: string,
+  ext?: string,
 ): Promise<DownloadResult> {
-  const args = ["-f", formatId, "-o", "-", "--no-warnings", "--no-playlist", url];
-  const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
-  child.stderr.on("data", (d) => process.stderr.write(d));
-  child.on("error", (e) => {
-    throw new ExtractError("degraded", 502, e.message);
+  return new Promise((resolve, reject) => {
+    const args = ["-f", formatId, "-o", "-", "--no-warnings", "--no-playlist", url];
+    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const errChunks: Buffer[] = [];
+    child.stderr.on("data", (d) => { process.stderr.write(d); errChunks.push(d); });
+    child.on("error", (e) => reject(new ExtractError("degraded", 502, e.message)));
+
+    const safeName = (title ?? "download").replace(/[^\w\d. -]/g, "_").slice(0, 100);
+    const safeExt = ext ?? "mp4";
+    const filename = `${safeName}.${safeExt}`;
+
+    child.stdout.once("readable", () =>
+      resolve({ stream: child.stdout, contentType: "application/octet-stream", filename }),
+    );
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        const stderr = Buffer.concat(errChunks).toString("utf8");
+        reject(new ExtractError("degraded", 502, stderr.slice(0, 200) || `yt-dlp exited ${code}`));
+      }
+    });
   });
-  return {
-    stream: child.stdout,
-    contentType: "application/octet-stream",
-    filename: `download-${Date.now()}.mp4`,
-  };
 }

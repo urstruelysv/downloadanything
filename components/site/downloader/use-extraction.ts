@@ -71,6 +71,8 @@ export function useExtraction({
     }
   };
 
+  const [remaining, setRemaining] = useState<number | null>(null);
+
   const startDownload = async () => {
     if (!result || !selectedFormatId) return;
     const flat = result.items.flatMap((i) => i.formats);
@@ -79,15 +81,20 @@ export function useExtraction({
     setStep("downloading");
     setErrorMsg("");
     try {
-      const body: Record<string, string> = { url, formatId: selectedFormatId };
+      const body: Record<string, unknown> = {
+        url,
+        formatId: selectedFormatId,
+        title: result.title,
+        ext: fmt.ext,
+      };
       if (fmt.delivery === "direct" && fmt.directUrl) {
         body.directUrl = fmt.directUrl;
+        if (fmt.directHeaders) body.directHeaders = fmt.directHeaders;
       }
       const res = await fetch("/api/download", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        redirect: "follow",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -97,18 +104,22 @@ export function useExtraction({
         return;
       }
       const ct = res.headers.get("content-type") ?? "";
+      const filename = `${result.title.replace(/[^\w\d.-]+/g, "_")}.${fmt.ext}`;
       let downloadUrl: string;
       let blob: Blob | null = null;
       if (ct.includes("application/json")) {
-        const j = (await res.json()) as { r2Url: string };
-        downloadUrl = j.r2Url;
+        const j = (await res.json()) as { r2Url?: string; remaining?: number };
+        downloadUrl = j.r2Url ?? "";
+        if (j.remaining !== undefined) setRemaining(j.remaining);
       } else {
         blob = await res.blob();
         downloadUrl = URL.createObjectURL(blob);
+        const hdr = res.headers.get("x-remaining");
+        if (hdr) setRemaining(Number(hdr));
       }
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `${result.title.replace(/[^\w\d.-]+/g, "_")}.${fmt.ext}`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -161,6 +172,7 @@ export function useExtraction({
     setSelectedFormatId,
     errorMsg,
     errorCode,
+    remaining,
     analyze,
     startDownload,
     reset,

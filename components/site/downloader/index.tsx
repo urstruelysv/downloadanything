@@ -145,7 +145,7 @@ export const DownloaderModal = ({
             />
           )}
           {ext.step === "done" && ext.result && (
-            <DoneView title={ext.result.title} onReset={ext.reset} />
+            <DoneView title={ext.result.title} remaining={ext.remaining} onReset={ext.reset} />
           )}
           {ext.step === "error" && (
             <ErrorView

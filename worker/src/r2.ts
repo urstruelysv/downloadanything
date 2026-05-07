@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "node:stream";
 
@@ -30,9 +31,11 @@ export async function uploadToR2(
   contentType: string,
 ): Promise<string> {
   const bucket = required("R2_BUCKET");
-  await client().send(
-    new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }),
-  );
+  const upload = new Upload({
+    client: client(),
+    params: { Bucket: bucket, Key: key, Body: body, ContentType: contentType },
+  });
+  await upload.done();
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: 3600,
   });

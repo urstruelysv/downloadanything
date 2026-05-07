@@ -25,7 +25,18 @@ async function rateLimit(ip: string): Promise<boolean> {
   return n <= RATE_PER_SEC;
 }
 
-async function checkDailyQuota(
+async function peekDailyQuota(
+  prefix: string,
+  id: string,
+): Promise<{ allowed: boolean; remaining: number }> {
+  const r = redis();
+  const key = todayKey(prefix, id);
+  const n = (await r.get<number>(key)) ?? 0;
+  const remaining = Math.max(0, DAILY_LIMIT - n);
+  return { allowed: n < DAILY_LIMIT, remaining };
+}
+
+async function consumeDailyQuota(
   prefix: string,
   id: string,
 ): Promise<{ allowed: boolean; remaining: number }> {
@@ -41,7 +52,7 @@ export async function checkAnon(ip: string): Promise<QuotaResult> {
   if (!(await rateLimit(ip))) {
     return { allowed: false, remaining: 0, plan: "free", reason: "rate_limited" };
   }
-  const { allowed, remaining } = await checkDailyQuota("anon", ip);
+  const { allowed, remaining } = await peekDailyQuota("anon", ip);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan: "free", reason: "quota_exceeded" };
   }
@@ -59,7 +70,29 @@ export async function checkUser(
   if (plan === "subscribed") {
     return { allowed: true, remaining: Infinity, plan };
   }
-  const { allowed, remaining } = await checkDailyQuota("user", userId);
+  const { allowed, remaining } = await peekDailyQuota("user", userId);
+  if (!allowed) {
+    return { allowed: false, remaining: 0, plan, reason: "quota_exceeded" };
+  }
+  return { allowed: true, remaining, plan };
+}
+
+export async function consumeAnon(ip: string): Promise<QuotaResult> {
+  const { allowed, remaining } = await consumeDailyQuota("anon", ip);
+  if (!allowed) {
+    return { allowed: false, remaining: 0, plan: "free", reason: "quota_exceeded" };
+  }
+  return { allowed: true, remaining, plan: "free" };
+}
+
+export async function consumeUser(
+  userId: string,
+  plan: Plan,
+): Promise<QuotaResult> {
+  if (plan === "subscribed") {
+    return { allowed: true, remaining: Infinity, plan };
+  }
+  const { allowed, remaining } = await consumeDailyQuota("user", userId);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan, reason: "quota_exceeded" };
   }
