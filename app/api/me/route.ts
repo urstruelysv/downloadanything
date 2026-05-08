@@ -1,15 +1,13 @@
-import { getCurrentUser, getUserPlan } from "@/lib/auth/supabase-server";
+import { withAuth } from "@/lib/http/with-auth";
 import { jsonError } from "@/lib/http/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return jsonError("auth_required", 401);
-  const plan = await getUserPlan(user.id);
+export const GET = withAuth(async (_req, ctx) => {
+  if (!ctx.user) return jsonError("auth_required", 401);
   return Response.json({
-    user: { id: user.id, email: user.email },
-    plan,
+    user: { id: ctx.user.id, email: ctx.user.email },
+    plan: ctx.plan,
   });
-}
+});

@@ -1,19 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import type { User } from "@supabase/supabase-js";
-import { getCurrentUser, getUserPlan } from "@/lib/auth/supabase-server";
-import { checkAnon, checkUser } from "@/lib/quota";
-import { clientIp } from "@/lib/http/ip";
+import { NextRequest } from "next/server";
 import { jsonError } from "@/lib/http/errors";
 import { validateUrl, detect } from "@/lib/platform";
-import type { Plan, QuotaResult } from "@/lib/quota";
 import { ExtractError } from "@/lib/extraction";
+import { withAuth, type AuthContext } from "./with-auth";
+import { withQuota, type QuotaContext } from "./with-quota";
 
-export type ApiContext = {
-  ip: string;
-  user: User | null;
-  plan: Plan;
-  quota: QuotaResult;
-};
+export type ApiContext = QuotaContext;
 
 export type UrlApiContext = ApiContext & {
   url: string;
@@ -33,68 +25,46 @@ export function withApi<O extends ApiOptions>(
   options: O,
   handler: HandlerFn<O["requireUrl"] extends true ? UrlApiContext : ApiContext>,
 ) {
-  return async (req: NextRequest): Promise<Response> => {
+  return withAuth(async (req: NextRequest, authCtx: AuthContext): Promise<Response> => {
     try {
-      const ip = clientIp(req);
-
-      let user: User | null = null;
-      try {
-        user = await getCurrentUser();
-      } catch {
-        // auth failure — treat as anonymous
-      }
-
-      if (options.requireAuth && !user) {
+      if (options.requireAuth && !authCtx.user) {
         return jsonError("auth_required", 401);
       }
 
-      let plan: Plan = "free";
-      if (user) {
-        plan = await getUserPlan(user.id);
-      }
+      const quotaHandler = withQuota(async (_req, quotaCtx) => {
+        let ctx: any = quotaCtx;
 
-      let quota: QuotaResult;
-      if (user) {
-        quota = await checkUser(user.id, ip, plan);
-      } else {
-        quota = await checkAnon(ip);
-      }
-      if (!quota.allowed) {
-        return jsonError(quota.reason ?? "quota_exceeded", 429, {
-          upgradeUrl: "/pricing",
-        });
-      }
+        if (options.requireUrl) {
+          let body: any;
+          try {
+            body = await req.json();
+          } catch {
+            return jsonError("invalid_url", 400);
+          }
 
-      let ctx: any = { ip, user, plan, quota };
+          const field = options.urlField ?? "url";
+          const rawUrl = body?.[field];
+          if (!rawUrl || typeof rawUrl !== "string") {
+            return jsonError("invalid_url", 400);
+          }
 
-      if (options.requireUrl) {
-        let body: any;
-        try {
-          body = await req.json();
-        } catch {
-          return jsonError("invalid_url", 400);
+          const validation = validateUrl(rawUrl);
+          if (!validation.ok) {
+            return jsonError(validation.reason, 400);
+          }
+
+          const det = detect(rawUrl);
+          if (!det) {
+            return jsonError("unsupported_platform", 400);
+          }
+
+          ctx = { ...ctx, url: validation.url, platform: det, body };
         }
 
-        const field = options.urlField ?? "url";
-        const rawUrl = body?.[field];
-        if (!rawUrl || typeof rawUrl !== "string") {
-          return jsonError("invalid_url", 400);
-        }
+        return await handler(req, ctx);
+      });
 
-        const validation = validateUrl(rawUrl);
-        if (!validation.ok) {
-          return jsonError(validation.reason, 400);
-        }
-
-        const det = detect(rawUrl);
-        if (!det) {
-          return jsonError("unsupported_platform", 400);
-        }
-
-        ctx = { ...ctx, url: validation.url, platform: det, body };
-      }
-
-      return await handler(req, ctx);
+      return await quotaHandler(req, authCtx);
     } catch (e) {
       if (e instanceof ExtractError) {
         return jsonError(e.code, e.httpStatus, e.message !== e.code ? { message: e.message } : undefined);
@@ -112,5 +82,5 @@ export function withApi<O extends ApiOptions>(
       }
       return jsonError("internal", 500);
     }
-  };
+  });
 }
