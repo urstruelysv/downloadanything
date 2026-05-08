@@ -1,6 +1,6 @@
 import { withApi, type UrlApiContext } from "@/lib/http/with-api";
 import { extract } from "@/lib/extraction";
-import { supabaseService } from "@/lib/auth/supabase-server";
+import { logDownload } from "@/lib/logging/downloads";
 import { supportedPlatforms } from "@/lib/platform";
 
 export const runtime = "nodejs";
@@ -11,21 +11,14 @@ export const POST = withApi(
   async (_req, ctx: UrlApiContext) => {
     const result = await extract(ctx.url);
 
-    supabaseService()
-      .from("downloads")
-      .insert({
-        user_id: ctx.user?.id ?? null,
-        ip: ctx.ip,
-        url: ctx.url,
-        platform: ctx.platform!.platform,
-        format: null,
-        bytes: null,
-        status: "success",
-        error: null,
-      })
-      .then(({ error }) => {
-        if (error) console.error("[extract] log failed", error);
-      });
+    logDownload({
+      userId: ctx.user?.id ?? null,
+      ip: ctx.ip,
+      url: ctx.url,
+      platform: ctx.platform!.platform,
+      format: null,
+      status: "success",
+    });
 
     return Response.json({
       ...result,

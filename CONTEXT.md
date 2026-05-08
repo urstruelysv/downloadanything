@@ -102,15 +102,20 @@ Root causes identified:
 - **Auth code is structurally correct.** Callback route, middleware, browser/server clients, useAuth hook all follow standard Supabase SSR patterns. No logic bugs.
 - **Magic link likely works** with a real email address (test@example.com was rejected due to reserved domain, not a code issue).
 
-**To fix:**
-1. Upgrade `@supabase/ssr` to latest (`npm install @supabase/ssr@latest`)
-2. Enable Google OAuth in Supabase dashboard (requires Google Cloud Console OAuth credentials)
-3. Add redirect URLs to Supabase dashboard allowlist
+**Done:**
+- ✅ `@supabase/ssr` upgraded to 0.10.3 (was 0.5.2). Type errors in `hooks/use-auth.ts` fixed (added explicit `AuthChangeEvent`, `Session` types).
+- ✅ Typecheck passes, 42 tests pass after upgrade.
+
+**Still needs (dashboard — manual):**
+1. Enable Google OAuth in Supabase dashboard (requires Google Cloud Console OAuth client ID + secret). Authorized redirect URI for Google: `https://mvnlqwvmtappirayhnwd.supabase.co/auth/v1/callback`
+2. Add redirect URLs in Supabase dashboard → Authentication → URL Configuration: `http://localhost:3000/auth/callback` (dev) + production Vercel URL `/auth/callback`
+3. Set Site URL in same section
 4. Browser-test both flows end-to-end
 
 ### 2. Preview not working
 - PreviewView component exists and renders thumbnail, format grid, download button
 - **Specific breakage not yet diagnosed** — needs browser testing after cobalt is deployed. May "just work" now that cobalt adapter returns proper `ExtractResult` with format grids. If not, likely a data shape issue between cobalt's simplified metadata (no thumbnail/duration for non-picker responses) and what PreviewView renders.
+- PreviewView uses `result.thumbnail` (falls back to platform color), `result.duration` (shows "—" if missing), `result.title`, format grid from `items.flatMap(i => i.formats)`. Cobalt adapter provides title (parsed from filename) and formats. Thumbnail/duration will be missing for tunnel/redirect responses — this is cosmetic, not broken.
 
 ### 3. Uncommitted bug fixes (in working tree)
 - **R2 always used:** `worker/src/app.ts` condition was inverted — all downloads went to R2 regardless of size. Fixed: stream by default, only R2 for known-large files (>50MB).

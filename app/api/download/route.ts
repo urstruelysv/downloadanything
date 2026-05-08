@@ -3,7 +3,7 @@ import { withApi, type UrlApiContext } from "@/lib/http/with-api";
 import { download } from "@/lib/extraction";
 import { consumeAnon, consumeUser } from "@/lib/quota";
 import { jsonError } from "@/lib/http/errors";
-import { supabaseService } from "@/lib/auth/supabase-server";
+import { logDownload } from "@/lib/logging/downloads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,13 +31,14 @@ export const POST = withApi(
 
     const result = await download(ctx.url, formatId, directUrl, directHeaders, title, ext);
 
-    recordDownload(
-      ctx.user?.id ?? null,
-      ctx.ip,
-      ctx.url,
-      ctx.platform!.platform,
-      formatId,
-    );
+    logDownload({
+      userId: ctx.user?.id ?? null,
+      ip: ctx.ip,
+      url: ctx.url,
+      platform: ctx.platform!.platform,
+      format: formatId,
+      status: "success",
+    });
 
     switch (result.kind) {
       case "r2":
@@ -50,18 +51,3 @@ export const POST = withApi(
     }
   },
 );
-
-function recordDownload(
-  userId: string | null,
-  ip: string,
-  url: string,
-  platform: string,
-  format: string,
-) {
-  supabaseService()
-    .from("downloads")
-    .insert({ user_id: userId, ip, url, platform, format, status: "success" })
-    .then(({ error }) => {
-      if (error) console.error("[download] log failed", error);
-    });
-}
