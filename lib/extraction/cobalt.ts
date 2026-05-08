@@ -1,5 +1,5 @@
-import type { Platform, ContentType, Format, ExtractItem, ExtractResult } from "./types";
-import { ExtractError } from "./errors";
+import type { Platform, ContentType, Format, ExtractItem, ExtractResult } from "@/shared/types";
+import { ExtractError } from "@/shared/errors";
 
 // --- Cobalt API types ---
 

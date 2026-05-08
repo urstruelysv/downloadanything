@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PLATFORM_LABEL, PLATFORM_COLOR, labelForError } from "./constants";
+import { platformLabel, platformGradient, labelForError } from "./constants";
 import type { DownloadRecord, Step, ExtractApiResponse } from "./types";
 
 export function useExtraction({
@@ -126,11 +126,11 @@ export function useExtraction({
       if (blob) setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
       onComplete?.({
         url,
-        platform: PLATFORM_LABEL[result.platform] ?? null,
+        platform: platformLabel(result.platform),
         meta: {
           title: result.title,
           thumbColor:
-            PLATFORM_COLOR[result.platform] ?? PLATFORM_COLOR.generic,
+            platformGradient(result.platform),
         },
         quality: fmt.quality,
         format: fmt.ext.toUpperCase(),

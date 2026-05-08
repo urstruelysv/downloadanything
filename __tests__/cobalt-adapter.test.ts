@@ -166,7 +166,7 @@ describe("cobaltExtract", () => {
     }));
 
     const { cobaltExtract } = await import("@/lib/extraction/cobalt");
-    const { ExtractError } = await import("@/lib/extraction/errors");
+    const { ExtractError } = await import("@/shared/errors");
     await expect(
       cobaltExtract("https://youtube.com/watch?v=deleted", "youtube", "video"),
     ).rejects.toThrow(ExtractError);

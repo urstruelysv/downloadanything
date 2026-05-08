@@ -4,15 +4,21 @@ import type { Platform, ContentType } from "@/shared/types";
 export type PlatformMeta = {
   label: string;
   color: string;
+  gradient: string;
   hostMatch: RegExp;
   contentRules?: Array<{ pathMatch: RegExp; contentType: ContentType }>;
   defaultContentType: ContentType;
 };
 
+type PlatformDisplay = { label: string; gradient: string };
+
+const GENERIC_DISPLAY: PlatformDisplay = { label: "Source", gradient: "linear-gradient(135deg,#666,#222)" };
+
 const PLATFORM_REGISTRY: Record<Exclude<Platform, "generic">, PlatformMeta> = {
   youtube: {
     label: "YouTube",
     color: "#FF0000",
+    gradient: "linear-gradient(135deg,#ff4d4d,#7a0000)",
     hostMatch: /(?:^|\.)((?:m\.)?youtube\.com|youtu\.be|music\.youtube\.com)$/,
     contentRules: [
       { pathMatch: /^\/playlist/, contentType: "playlist" },
@@ -24,6 +30,7 @@ const PLATFORM_REGISTRY: Record<Exclude<Platform, "generic">, PlatformMeta> = {
   instagram: {
     label: "Instagram",
     color: "#E1306C",
+    gradient: "linear-gradient(135deg,#feda75,#d62976,#4f5bd5)",
     hostMatch: /(?:^|\.)(instagram\.com|instagr\.am)$/,
     contentRules: [
       { pathMatch: /^\/(reel|reels)\//, contentType: "video" },
@@ -35,24 +42,28 @@ const PLATFORM_REGISTRY: Record<Exclude<Platform, "generic">, PlatformMeta> = {
   tiktok: {
     label: "TikTok",
     color: "#000000",
+    gradient: "linear-gradient(135deg,#25f4ee,#000,#fe2c55)",
     hostMatch: /(?:^|\.)(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)$/,
     defaultContentType: "video",
   },
   twitter: {
     label: "Twitter / X",
     color: "#1DA1F2",
+    gradient: "linear-gradient(135deg,#000,#222)",
     hostMatch: /(?:^|\.)(twitter\.com|x\.com|t\.co|mobile\.twitter\.com)$/,
     defaultContentType: "video",
   },
   facebook: {
     label: "Facebook",
     color: "#1877F2",
+    gradient: "linear-gradient(135deg,#1877f2,#0a3d91)",
     hostMatch: /(?:^|\.)(facebook\.com|fb\.watch|fb\.com|m\.facebook\.com)$/,
     defaultContentType: "video",
   },
   reddit: {
     label: "Reddit",
     color: "#FF4500",
+    gradient: "linear-gradient(135deg,#ff4500,#a02b00)",
     hostMatch: /(?:^|\.)(reddit\.com|redd\.it|v\.redd\.it|i\.redd\.it)$/,
     contentRules: [
       { pathMatch: /\.(jpg|jpeg|png|webp|gif)$/i, contentType: "photo" },
@@ -63,18 +74,21 @@ const PLATFORM_REGISTRY: Record<Exclude<Platform, "generic">, PlatformMeta> = {
   pinterest: {
     label: "Pinterest",
     color: "#E60023",
+    gradient: "linear-gradient(135deg,#e60023,#7a0012)",
     hostMatch: /(?:^|\.)(pinterest\.com|pin\.it)$/,
     defaultContentType: "photo",
   },
   vimeo: {
     label: "Vimeo",
     color: "#1AB7EA",
+    gradient: "linear-gradient(135deg,#1ab7ea,#005670)",
     hostMatch: /(?:^|\.)(vimeo\.com|player\.vimeo\.com)$/,
     defaultContentType: "video",
   },
   soundcloud: {
     label: "SoundCloud",
     color: "#FF5500",
+    gradient: "linear-gradient(135deg,#ff7a00,#ff3300)",
     hostMatch: /(?:^|\.)(soundcloud\.com|on\.soundcloud\.com)$/,
     defaultContentType: "audio",
   },
@@ -141,4 +155,10 @@ export function platformMeta(
   p: Exclude<Platform, "generic">,
 ): PlatformMeta | undefined {
   return PLATFORM_REGISTRY[p];
+}
+
+export function platformDisplay(p: Platform): PlatformDisplay {
+  if (p === "generic") return GENERIC_DISPLAY;
+  const meta = PLATFORM_REGISTRY[p];
+  return { label: meta.label, gradient: meta.gradient };
 }

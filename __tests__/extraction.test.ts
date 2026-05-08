@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ExtractError } from "@/lib/extraction/errors";
+import { ExtractError } from "@/shared/errors";
 
 describe("ExtractError", () => {
   it("stores code and httpStatus", () => {

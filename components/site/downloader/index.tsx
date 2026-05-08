@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { Icon, Logo } from "../logo";
 import { useExtraction } from "./use-extraction";
-import { PLATFORM_LABEL, PLATFORM_COLOR, fmtDuration } from "./constants";
+import { platformLabel as getPlatformLabel, platformGradient, fmtDuration } from "./constants";
 import { PasteView } from "./paste-view";
 import { SpinnerView } from "./spinner-view";
 import { PreviewView } from "./preview-view";
@@ -38,10 +38,10 @@ export const DownloaderModal = ({
   if (!open) return null;
 
   const platformLabel = ext.result
-    ? (PLATFORM_LABEL[ext.result.platform] ?? "Source")
+    ? getPlatformLabel(ext.result.platform)
     : "";
   const thumbColor = ext.result
-    ? (PLATFORM_COLOR[ext.result.platform] ?? PLATFORM_COLOR.generic)
+    ? platformGradient(ext.result.platform)
     : "";
   const flatFormats = ext.result
     ? ext.result.items.flatMap((i) => i.formats)
