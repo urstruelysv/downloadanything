@@ -42,13 +42,18 @@ function cobaltConfig() {
 // --- Error mapping ---
 
 function mapCobaltError(code: string): { errorCode: string; httpStatus: number } {
-  if (code.includes("unavailable") || code.includes("private")) {
+  if (code.includes("unavailable") || code.includes("private") || code.includes("protected")) {
     return { errorCode: "unavailable", httpStatus: 404 };
   }
   if (code.includes("live")) return { errorCode: "unavailable", httpStatus: 400 };
-  if (code.includes("link") || code.includes("url")) return { errorCode: "invalid_url", httpStatus: 400 };
+  if (code.includes("link") || code.includes("url") || code.includes("unsupported")) {
+    return { errorCode: "invalid_url", httpStatus: 400 };
+  }
   if (code.includes("rate")) return { errorCode: "rate_limited", httpStatus: 429 };
   if (code.includes("auth")) return { errorCode: "auth_required", httpStatus: 403 };
+  if (code.includes("fetch") || code.includes("fail") || code.includes("empty") || code.includes("timeout") || code.includes("codec")) {
+    return { errorCode: "unavailable", httpStatus: 502 };
+  }
   return { errorCode: "degraded", httpStatus: 502 };
 }
 
@@ -62,13 +67,24 @@ async function cobaltFetch(body: CobaltRequest): Promise<CobaltSuccessResponse> 
   };
   if (token) headers.authorization = `Api-Key ${token}`;
 
-  const res = await fetch(`${url}/`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${url}/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    throw new ExtractError("degraded", 502, (e as Error).message);
+  }
 
-  const data = (await res.json()) as CobaltResponse;
+  let data: CobaltResponse;
+  try {
+    data = (await res.json()) as CobaltResponse;
+  } catch {
+    throw new ExtractError("degraded", 502, `Cobalt returned non-JSON (HTTP ${res.status})`);
+  }
+
   if (data.status === "error") {
     const { errorCode, httpStatus } = mapCobaltError(data.error.code);
     throw new ExtractError(errorCode, httpStatus, data.error.code);

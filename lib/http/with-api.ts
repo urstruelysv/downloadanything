@@ -74,10 +74,15 @@ export function withApi<O extends ApiOptions>(
       if (
         msg.includes("Worker not configured") ||
         msg.includes("ECONNREFUSED") ||
-        msg.includes("fetch failed")
+        msg.includes("ENOTFOUND") ||
+        msg.includes("ETIMEDOUT") ||
+        msg.includes("ECONNRESET") ||
+        msg.includes("socket hang up") ||
+        msg.includes("fetch failed") ||
+        msg.includes("Cobalt")
       ) {
         return jsonError("degraded", 503, {
-          message: "Extraction worker is not running.",
+          message: "Extraction worker is not reachable.",
         });
       }
       return jsonError("internal", 500);
