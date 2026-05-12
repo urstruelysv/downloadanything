@@ -116,24 +116,21 @@ export function decodeCobaltFormat(
   return { downloadMode: mode as "auto" | "mute", videoQuality: quality };
 }
 
-// --- Format presets ---
+// --- Resolved formats ---
 
-function videoFormats(): Format[] {
-  return [
-    { formatId: encodeCobaltFormat("auto", "1080"), quality: "1080p", ext: "mp4", delivery: "direct" },
-    { formatId: encodeCobaltFormat("auto", "720"), quality: "720p", ext: "mp4", delivery: "direct" },
-    { formatId: encodeCobaltFormat("auto", "480"), quality: "480p", ext: "mp4", delivery: "direct" },
-    { formatId: encodeCobaltFormat("auto", "360"), quality: "360p", ext: "mp4", delivery: "direct" },
-    { formatId: encodeCobaltFormat("audio", "mp3", "128"), quality: "Audio", ext: "mp3", delivery: "direct" },
-  ];
+const AUDIO_EXTENSIONS = new Set(["mp3", "ogg", "wav", "opus", "flac", "m4a"]);
+const KNOWN_VIDEO_QUALITIES = new Set(["144", "240", "360", "480", "720", "1080", "1440", "2160", "4320"]);
+
+function extFromFilename(filename: string): string {
+  if (!filename.includes(".")) return "mp4";
+  return filename.split(".").pop()?.toLowerCase() || "mp4";
 }
 
-function audioFormats(): Format[] {
-  return [
-    { formatId: encodeCobaltFormat("audio", "mp3", "320"), quality: "320kbps", ext: "mp3", delivery: "direct" },
-    { formatId: encodeCobaltFormat("audio", "mp3", "128"), quality: "128kbps", ext: "mp3", delivery: "direct" },
-    { formatId: encodeCobaltFormat("audio", "ogg", "128"), quality: "OGG", ext: "ogg", delivery: "direct" },
-  ];
+function qualityFromFilename(filename: string): string {
+  const normalized = filename.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  const match = normalized.match(/\b(\d{3,4})p?\b/);
+  const height = match?.[1];
+  return height && KNOWN_VIDEO_QUALITIES.has(height) ? `${height}p` : "Original";
 }
 
 // --- Title from cobalt filename ---
@@ -159,10 +156,13 @@ export async function cobaltExtract(
     const items: ExtractItem[] = probe.picker.map((item, i) => ({
       id: String(i),
       type: item.type === "photo" ? ("photo" as const) : ("video" as const),
-      formats:
-        item.type === "photo"
-          ? [{ formatId: `direct:${i}`, quality: "Original", ext: "jpg", delivery: "direct" as const, directUrl: item.url }]
-          : videoFormats(),
+      formats: [{
+        formatId: `direct:${i}`,
+        quality: "Original",
+        ext: item.type === "photo" ? "jpg" : item.type === "gif" ? "gif" : "mp4",
+        delivery: "direct" as const,
+        directUrl: item.url,
+      }],
     }));
     const thumb = probe.picker.find((p) => p.thumb)?.thumb;
     const resolved: ContentType =
@@ -181,23 +181,18 @@ export async function cobaltExtract(
   }
 
   if (probe.status === "local-processing") {
-    return {
-      platform,
-      contentType: contentType === "unknown" ? "video" : contentType,
-      title: titleFromFilename(probe.output?.filename ?? "Media"),
-      items: [{
-        id: "0",
-        type: contentType === "audio" ? "audio" : "video",
-        formats: contentType === "audio" ? audioFormats() : videoFormats(),
-      }],
-    };
+    throw new ExtractError(
+      "degraded",
+      501,
+      "This link needs local processing that is not supported yet.",
+    );
   }
 
   // tunnel or redirect
   const filename = probe.filename || "download";
   const title = titleFromFilename(filename);
-  const ext = filename.split(".").pop() || "mp4";
-  const isAudio = contentType === "audio" || /^(mp3|ogg|wav|opus|flac|m4a)$/.test(ext);
+  const ext = extFromFilename(filename);
+  const isAudio = contentType === "audio" || AUDIO_EXTENSIONS.has(ext);
 
   return {
     platform,
@@ -206,7 +201,13 @@ export async function cobaltExtract(
     items: [{
       id: "0",
       type: isAudio ? "audio" : "video",
-      formats: isAudio ? audioFormats() : videoFormats(),
+      formats: [{
+        formatId: "direct:0",
+        quality: isAudio ? "Original audio" : qualityFromFilename(filename),
+        ext,
+        delivery: "direct",
+        directUrl: probe.url,
+      }],
     }],
   };
 }
@@ -227,9 +228,11 @@ export async function cobaltDownload(
   }
 
   if (response.status === "local-processing") {
-    const tunnelUrl = response.tunnel?.[0];
-    if (!tunnelUrl) throw new ExtractError("degraded", 502, "No tunnel URL in local-processing response");
-    return { downloadUrl: tunnelUrl, filename: response.output?.filename ?? "download" };
+    throw new ExtractError(
+      "degraded",
+      501,
+      "This format needs local processing that is not supported yet.",
+    );
   }
 
   if (response.status === "picker") {

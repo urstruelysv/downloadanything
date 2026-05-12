@@ -15,12 +15,21 @@ vi.mock("@/lib/http/ip", () => ({
 }));
 
 import { withAuth, type AuthContext } from "@/lib/http/with-auth";
+import { withApi } from "@/lib/http/with-api";
 import { withQuota, type QuotaContext } from "@/lib/http/with-quota";
 import { getCurrentUser, getUserPlan } from "@/lib/auth/supabase-server";
 import { checkAnon, checkUser } from "@/lib/quota";
+import { ExtractError } from "@/shared/errors";
 
 function fakeReq() {
   return { headers: new Headers() } as any;
+}
+
+function fakeJsonReq(body: Record<string, unknown>) {
+  return {
+    headers: new Headers(),
+    json: async () => body,
+  } as any;
 }
 
 describe("withAuth", () => {
@@ -97,5 +106,32 @@ describe("withQuota", () => {
     const authCtx: AuthContext = { ip: "1.2.3.4", user: { id: "u1" } as any, plan: "subscribed" };
     await handler(fakeReq(), authCtx);
     expect(checkUser).toHaveBeenCalledWith("u1", "1.2.3.4", "subscribed");
+  });
+});
+
+describe("withApi", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("maps extraction failures to error codes without leaking internal messages", async () => {
+    (getCurrentUser as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (checkAnon as ReturnType<typeof vi.fn>).mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      plan: "free",
+    });
+
+    const handler = withApi({ requireUrl: true }, async () => {
+      throw new ExtractError(
+        "degraded",
+        501,
+        "This format needs local processing that is not supported yet.",
+      );
+    });
+
+    const res = await handler(fakeJsonReq({ url: "https://www.youtube.com/watch?v=abc123" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(501);
+    expect(body).toEqual({ error: "degraded" });
   });
 });

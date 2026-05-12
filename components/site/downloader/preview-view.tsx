@@ -4,6 +4,13 @@ import { fmtDuration, fmtBytes } from "./constants";
 import { Icon } from "../logo";
 import { Platform } from "../platforms";
 
+function deliveryLabel(format: Format): string {
+  if (format.directUrl) return "Verified download link";
+  if (format.delivery === "worker-r2") return "Server-merged";
+  if (format.delivery === "worker-stream") return "Streamed";
+  return "Direct download";
+}
+
 export const PreviewView = ({
   result,
   flatFormats,
@@ -130,11 +137,7 @@ export const PreviewView = ({
               {f.quality} · {f.ext.toUpperCase()}
             </span>
             <span className="sub" style={{ fontSize: 11 }}>
-              {f.delivery === "direct"
-                ? "Direct from source"
-                : f.delivery === "worker-r2"
-                ? "Server-merged"
-                : "Streamed"}
+              {deliveryLabel(f)}
               {f.sizeBytes ? ` · ${fmtBytes(f.sizeBytes)}` : ""}
             </span>
           </button>

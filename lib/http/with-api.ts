@@ -67,7 +67,7 @@ export function withApi<O extends ApiOptions>(
       return await quotaHandler(req, authCtx);
     } catch (e) {
       if (e instanceof ExtractError) {
-        return jsonError(e.code, e.httpStatus, e.message !== e.code ? { message: e.message } : undefined);
+        return jsonError(e.code, e.httpStatus);
       }
       console.error("[api]", e);
       const msg = String((e as Error)?.message ?? "");

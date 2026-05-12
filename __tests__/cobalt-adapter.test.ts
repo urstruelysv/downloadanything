@@ -82,8 +82,36 @@ describe("cobaltExtract", () => {
     expect(result.contentType).toBe("video");
     expect(result.title).toBe("Rick Astley Never Gonna Give You Up");
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].formats.length).toBeGreaterThan(0);
-    expect(result.items[0].formats[0].formatId).toMatch(/^cobalt:/);
+    expect(result.items[0].formats).toHaveLength(1);
+    expect(result.items[0].formats[0].formatId).toBe("direct:0");
+    expect(result.items[0].formats[0].directUrl).toBe("https://cobalt.test/tunnel/abc");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the resolved tunnel URL as the only verified video format", async () => {
+    const mockResponse = {
+      status: "tunnel",
+      url: "https://cobalt.test/tunnel/abc",
+      filename: "lecture_clip_720p.mp4",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    }));
+
+    const { cobaltExtract } = await import("@/lib/extraction/cobalt");
+    const result = await cobaltExtract("https://youtube.com/watch?v=lecture", "youtube", "video");
+
+    expect(result.items[0].formats).toEqual([
+      {
+        formatId: "direct:0",
+        quality: "720p",
+        ext: "mp4",
+        delivery: "direct",
+        directUrl: "https://cobalt.test/tunnel/abc",
+      },
+    ]);
 
     vi.unstubAllGlobals();
   });
@@ -134,6 +162,35 @@ describe("cobaltExtract", () => {
     vi.unstubAllGlobals();
   });
 
+  it("maps video picker items to direct item downloads instead of fake quality presets", async () => {
+    const mockResponse = {
+      status: "picker",
+      picker: [
+        { type: "video", url: "https://cdn.example/video.mp4", thumb: "https://cdn.example/thumb.jpg" },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    }));
+
+    const { cobaltExtract } = await import("@/lib/extraction/cobalt");
+    const result = await cobaltExtract("https://www.tiktok.com/@user/video/123", "tiktok", "video");
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].formats).toEqual([
+      {
+        formatId: "direct:0",
+        quality: "Original",
+        ext: "mp4",
+        delivery: "direct",
+        directUrl: "https://cdn.example/video.mp4",
+      },
+    ]);
+
+    vi.unstubAllGlobals();
+  });
+
   it("maps audio content to audio formats", async () => {
     const mockResponse = {
       status: "tunnel",
@@ -155,6 +212,61 @@ describe("cobaltExtract", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses the resolved tunnel URL as the only verified audio format", async () => {
+    const mockResponse = {
+      status: "tunnel",
+      url: "https://cobalt.test/tunnel/track",
+      filename: "artist_track.mp3",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    }));
+
+    const { cobaltExtract } = await import("@/lib/extraction/cobalt");
+    const result = await cobaltExtract("https://soundcloud.com/artist/track", "soundcloud", "audio");
+
+    expect(result.items[0].formats).toEqual([
+      {
+        formatId: "direct:0",
+        quality: "Original audio",
+        ext: "mp3",
+        delivery: "direct",
+        directUrl: "https://cobalt.test/tunnel/track",
+      },
+    ]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects local-processing extract responses instead of offering unsupported formats", async () => {
+    const mockResponse = {
+      status: "local-processing",
+      type: "merge",
+      service: "youtube",
+      tunnel: [
+        "https://cobalt.test/tunnel/video-only",
+        "https://cobalt.test/tunnel/audio-only",
+      ],
+      output: { type: "mp4", filename: "video.mp4" },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    }));
+
+    const { cobaltExtract } = await import("@/lib/extraction/cobalt");
+
+    await expect(
+      cobaltExtract("https://youtube.com/watch?v=dQw4w9WgXcQ", "youtube", "video"),
+    ).rejects.toMatchObject({
+      code: "degraded",
+      httpStatus: 501,
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it("throws ExtractError on cobalt error response", async () => {
     const mockResponse = {
       status: "error",
@@ -170,6 +282,42 @@ describe("cobaltExtract", () => {
     await expect(
       cobaltExtract("https://youtube.com/watch?v=deleted", "youtube", "video"),
     ).rejects.toThrow(ExtractError);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("cobaltDownload", () => {
+  beforeEach(() => {
+    vi.stubEnv("WORKER_URL", "https://cobalt.test");
+    vi.stubEnv("WORKER_TOKEN", "test-token");
+  });
+
+  it("rejects local-processing responses instead of returning a partial tunnel", async () => {
+    const mockResponse = {
+      status: "local-processing",
+      type: "merge",
+      service: "youtube",
+      tunnel: [
+        "https://cobalt.test/tunnel/video-only",
+        "https://cobalt.test/tunnel/audio-only",
+      ],
+      output: { type: "mp4", filename: "video.mp4" },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    }));
+
+    const { cobaltDownload } = await import("@/lib/extraction/cobalt");
+    const { ExtractError } = await import("@/shared/errors");
+
+    await expect(
+      cobaltDownload("https://youtube.com/watch?v=dQw4w9WgXcQ", "cobalt:auto:1080"),
+    ).rejects.toMatchObject({
+      code: "degraded",
+      httpStatus: 501,
+    } satisfies Partial<InstanceType<typeof ExtractError>>);
 
     vi.unstubAllGlobals();
   });
