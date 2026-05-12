@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/auth/supabase-browser";
 import { Icon, LogoLockup } from "@/components/site/logo";
+import { FREE_USER_DAILY_DOWNLOAD_LIMIT } from "@/shared/quota";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -70,7 +71,8 @@ export default function LoginPage() {
             Sign in
           </h1>
           <p style={{ fontSize: 14, color: "var(--muted)", marginTop: 6 }}>
-            Sign in to subscribe, track history, and unlock Pro.
+            Sign in for {FREE_USER_DAILY_DOWNLOAD_LIMIT} downloads/day, session
+            persistence, and short-term history.
           </p>
         </div>
 

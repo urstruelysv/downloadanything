@@ -7,7 +7,7 @@ const FAVICON =
 export const metadata: Metadata = {
   title: "Download Anything — Universal Download Solution",
   description:
-    "Paste a link. Get the file. Download videos, music, images, posts and playlists from YouTube, Instagram, TikTok, X, Facebook, Reddit, Pinterest, Vimeo, and SoundCloud — original quality, up to 8K on Pro.",
+    "Paste a link. Get the file. Download videos, music, images, posts and playlists from YouTube, Instagram, TikTok, X, Facebook, Reddit, Pinterest, Vimeo, and SoundCloud. Free downloads are capped at 1080p for v1.",
   icons: {
     icon: FAVICON,
     shortcut: FAVICON,

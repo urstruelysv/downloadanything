@@ -1,0 +1,2 @@
+export const ANON_DAILY_DOWNLOAD_LIMIT = 4;
+export const FREE_USER_DAILY_DOWNLOAD_LIMIT = 5;

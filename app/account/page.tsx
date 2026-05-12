@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/auth/supabase-browser";
 import { Icon, LogoLockup } from "@/components/site/logo";
+import { FREE_USER_DAILY_DOWNLOAD_LIMIT } from "@/shared/quota";
 import type { User } from "@supabase/supabase-js";
 
 type MeResponse = {
@@ -54,16 +55,6 @@ export default function AccountPage() {
   const signOut = async () => {
     await supabaseBrowser().auth.signOut();
     window.location.href = "/";
-  };
-
-  const upgrade = async (plan: "monthly" | "yearly") => {
-    const res = await fetch("/api/checkout", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ plan }),
-    });
-    const body = await res.json();
-    if (body.url) window.location.href = body.url;
   };
 
   if (loading) {
@@ -119,16 +110,13 @@ export default function AccountPage() {
           <p style={{ fontSize: 14, opacity: 0.8, marginTop: 8 }}>
             {isPro
               ? "Unlimited downloads, up to 8K, playlists, 50-URL batches, permanent history."
-              : "5 downloads / day, up to 1080p, single URL, 7-day history."}
+              : `${FREE_USER_DAILY_DOWNLOAD_LIMIT} downloads / day, up to 1080p, single URL, 7-day history. Paid plans are coming soon.`}
           </p>
           {!isPro && (
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <button className="btn btn-grad" onClick={() => upgrade("monthly")} style={{ padding: "10px 20px" }}>
-                $3.99/mo
-              </button>
-              <button className="btn btn-ghost" onClick={() => upgrade("yearly")} style={{ padding: "10px 20px", background: "var(--surface)" }}>
-                $29/yr <span style={{ fontSize: 11, color: "var(--grad-to)", marginLeft: 4 }}>save 39%</span>
-              </button>
+              <span className="btn btn-ghost" style={{ padding: "10px 20px", background: "var(--surface)" }}>
+                Pro coming soon
+              </span>
             </div>
           )}
         </div>

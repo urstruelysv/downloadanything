@@ -296,8 +296,8 @@ export const Hero = ({
           }}
         >
           Download videos, music, images, posts and playlists from YouTube, Instagram,
-          TikTok, X, Facebook, Reddit, Pinterest, Vimeo, and SoundCloud — in original
-          quality, up to 8K on Pro. No ads, no watermarks, no mock data.
+          TikTok, X, Facebook, Reddit, Pinterest, Vimeo, and SoundCloud. Free downloads
+          are capped at 1080p for v1. No ads, no watermarks, no mock data.
         </p>
 
         <div

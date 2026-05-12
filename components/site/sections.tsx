@@ -4,6 +4,7 @@ import * as React from "react";
 import { useState } from "react";
 import { Icon, LogoLockup } from "./logo";
 import { Platform } from "./platforms";
+import { ANON_DAILY_DOWNLOAD_LIMIT, FREE_USER_DAILY_DOWNLOAD_LIMIT } from "@/shared/quota";
 
 export const PlatformsSection = () => {
   const platforms = [
@@ -256,7 +257,7 @@ export const HowItWorksSection = ({ onDemo }: { onDemo: () => void }) => {
     {
       n: "02",
       title: "Pick quality & format",
-      body: "Choose up to 8K, 1080p, audio-only or other formats — MP4, MP3, JPG.",
+      body: "Choose a v1 free format up to 1080p, including video, audio-only, or image downloads.",
     },
     {
       n: "03",
@@ -354,9 +355,9 @@ export const HowItWorksSection = ({ onDemo }: { onDemo: () => void }) => {
 
 export const StatsSection = () => {
   const stats = [
-    { num: "8K", label: "Max native quality" },
+    { num: "1080p", label: "Free quality cap" },
     { num: "9+", label: "Platforms supported" },
-    { num: "50", label: "URL batch on Pro" },
+    { num: "Soon", label: "Paid plans" },
     { num: "0", label: "Ads, watermarks, tracking" },
   ];
   return (
@@ -527,19 +528,18 @@ export const TestimonialsSection = () => {
 };
 
 export const PricingSection = () => {
-  const [annual, setAnnual] = useState(true);
-  const [busy, setBusy] = useState(false);
   const tiers = [
     {
       name: "Free",
-      plan: null as null | "monthly" | "yearly",
       price: "$0",
       period: "forever",
       blurb: "Occasional downloads, no card required.",
       cta: "Start free",
       ctaStyle: "ghost" as const,
+      disabled: false,
       features: [
-        "5 downloads / day",
+        `${ANON_DAILY_DOWNLOAD_LIMIT} anonymous downloads / day`,
+        `${FREE_USER_DAILY_DOWNLOAD_LIMIT} signed-in downloads / day`,
         "Up to 1080p quality",
         "MP4 / MP3 / JPG",
         "Single-URL only",
@@ -549,14 +549,12 @@ export const PricingSection = () => {
     },
     {
       name: "Pro",
-      plan: (annual ? "yearly" : "monthly") as "monthly" | "yearly",
-      price: annual ? "$2.42" : "$3.99",
-      period: "/ month",
-      blurb: annual
-        ? "$29 billed yearly. Save 39%."
-        : "Billed monthly. Cancel anytime.",
-      cta: "Subscribe",
+      price: "Soon",
+      period: "",
+      blurb: "Paid plans are coming after the core downloader proves demand.",
+      cta: "Coming soon",
       ctaStyle: "pop" as const,
+      disabled: true,
       features: [
         "Unlimited downloads",
         "Up to 8K quality",
@@ -570,27 +568,9 @@ export const PricingSection = () => {
   ];
 
   const onCta = async (tier: (typeof tiers)[number]) => {
-    if (!tier.plan) {
-      window.location.hash = "#";
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan: tier.plan }),
-      });
-      if (res.status === 401) {
-        window.location.href = "/login?next=/pricing";
-        return;
-      }
-      const body = await res.json();
-      if (body.url) window.location.href = body.url;
-    } finally {
-      setBusy(false);
-    }
+    if (tier.disabled) return;
+    window.location.hash = "#";
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
   return (
     <section id="pricing" className="section-pad">
@@ -610,54 +590,6 @@ export const PricingSection = () => {
           >
             Simple plans. <em>No surprises.</em>
           </h2>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 0,
-              padding: 4,
-              background: "var(--surface)",
-              border: "1px solid var(--line)",
-              borderRadius: 999,
-              marginTop: 12,
-            }}
-          >
-            <button
-              onClick={() => setAnnual(false)}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 999,
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 500,
-                background: !annual ? "white" : "transparent",
-                color: !annual ? "var(--ink)" : "var(--muted)",
-                boxShadow: !annual ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
-              }}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setAnnual(true)}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 999,
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 500,
-                background: annual ? "white" : "transparent",
-                color: annual ? "var(--ink)" : "var(--muted)",
-                boxShadow: annual ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
-              }}
-            >
-              Annual{" "}
-              <span style={{ marginLeft: 6, fontSize: 11, color: "var(--grad-to)" }}>
-                −39%
-              </span>
-            </button>
-          </div>
         </div>
         <div
           style={{
@@ -703,7 +635,7 @@ export const PricingSection = () => {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    Most popular
+                    Coming soon
                   </span>
                 )}
                 <div>
@@ -797,10 +729,17 @@ export const PricingSection = () => {
                 <button
                   className={pop ? "btn btn-grad" : "btn btn-ghost"}
                   onClick={() => onCta(t)}
-                  disabled={busy}
-                  style={{ width: "100%", justifyContent: "center", padding: "14px 24px" }}
+                  disabled={t.disabled}
+                  aria-disabled={t.disabled}
+                  style={{
+                    width: "100%",
+                    justifyContent: "center",
+                    padding: "14px 24px",
+                    cursor: t.disabled ? "default" : "pointer",
+                    opacity: t.disabled ? 0.82 : 1,
+                  }}
                 >
-                  {busy && pop ? "Redirecting…" : t.cta}{" "}
+                  {t.cta}{" "}
                   <Icon
                     name="arrow-right"
                     size={14}
@@ -820,11 +759,11 @@ export const FAQSection = () => {
   const faqs = [
     {
       q: "Is it actually free?",
-      a: "Yes — the free tier gives you 5 downloads per day, no card required. Pro ($3.99/mo or $29/yr) unlocks unlimited downloads, up to 8K, playlists, and 50-URL batches.",
+      a: `Yes. Anonymous users get ${ANON_DAILY_DOWNLOAD_LIMIT} downloads per day; signed-in free users get ${FREE_USER_DAILY_DOWNLOAD_LIMIT}, no card required. Pro is coming soon after the core downloader proves demand.`,
     },
     {
       q: "Do you keep my download history?",
-      a: "Anonymous downloads keep no history. Signed-in free users get 7 days. Pro users keep history forever and can clear it anytime. Source URLs are processed in-memory; we don't proxy or cache file bytes beyond what's needed to deliver them.",
+      a: "Anonymous downloads keep no history. Signed-in free users get 7 days. Longer history is planned for paid plans when they launch. Source URLs are processed in-memory; we don't proxy or cache file bytes beyond what's needed to deliver them.",
     },
     {
       q: "Which platforms do you support?",
@@ -840,7 +779,7 @@ export const FAQSection = () => {
     },
     {
       q: "Can I download in 4K or 8K?",
-      a: "Yes — when the source provides a 4K or 8K master, Pro delivers it untouched (audio + video merged server-side). Free is capped at 1080p.",
+      a: "Free downloads are capped at 1080p for v1. Higher-quality Pro downloads are planned, but paid plans are not available yet.",
     },
     {
       q: "What about audio-only files?",

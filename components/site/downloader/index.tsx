@@ -9,6 +9,7 @@ import { SpinnerView } from "./spinner-view";
 import { PreviewView } from "./preview-view";
 import { DoneView } from "./done-view";
 import { ErrorView } from "./error-view";
+import { ANON_DAILY_DOWNLOAD_LIMIT, FREE_USER_DAILY_DOWNLOAD_LIMIT } from "@/shared/quota";
 import type { DownloadRecord } from "./types";
 
 export type { DownloadRecord } from "./types";
@@ -175,7 +176,10 @@ export const DownloaderModal = ({
               <Icon name="lock" size={12} /> HTTPS only · No file bytes proxied
               beyond what's needed
             </span>
-            <span>Free tier: 5 / day · Pro: unlimited</span>
+            <span>
+              Anonymous: {ANON_DAILY_DOWNLOAD_LIMIT} / day · Signed-in:{" "}
+              {FREE_USER_DAILY_DOWNLOAD_LIMIT} / day
+            </span>
           </div>
         )}
       </div>

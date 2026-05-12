@@ -28,7 +28,7 @@ export const ErrorView = ({
         href="/#pricing"
         style={{ alignSelf: "center", padding: "12px 22px" }}
       >
-        See Pro plan
+        View limits
       </a>
     )}
     {errorCode !== "quota_exceeded" && (

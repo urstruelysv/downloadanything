@@ -1,4 +1,5 @@
 import { redis } from "@/lib/quota/redis";
+import { ANON_DAILY_DOWNLOAD_LIMIT, FREE_USER_DAILY_DOWNLOAD_LIMIT } from "@/shared/quota";
 
 export type Plan = "free" | "subscribed";
 
@@ -9,7 +10,6 @@ export type QuotaResult = {
   reason?: "quota_exceeded" | "rate_limited";
 };
 
-const DAILY_LIMIT = 5;
 const RATE_PER_SEC = 1;
 
 function todayKey(prefix: string, id: string): string {
@@ -28,31 +28,33 @@ async function rateLimit(ip: string): Promise<boolean> {
 async function peekDailyQuota(
   prefix: string,
   id: string,
+  limit: number,
 ): Promise<{ allowed: boolean; remaining: number }> {
   const r = redis();
   const key = todayKey(prefix, id);
   const n = (await r.get<number>(key)) ?? 0;
-  const remaining = Math.max(0, DAILY_LIMIT - n);
-  return { allowed: n < DAILY_LIMIT, remaining };
+  const remaining = Math.max(0, limit - n);
+  return { allowed: n < limit, remaining };
 }
 
 async function consumeDailyQuota(
   prefix: string,
   id: string,
+  limit: number,
 ): Promise<{ allowed: boolean; remaining: number }> {
   const r = redis();
   const key = todayKey(prefix, id);
   const n = await r.incr(key);
   if (n === 1) await r.expire(key, 60 * 60 * 24);
-  const remaining = Math.max(0, DAILY_LIMIT - n);
-  return { allowed: n <= DAILY_LIMIT, remaining };
+  const remaining = Math.max(0, limit - n);
+  return { allowed: n <= limit, remaining };
 }
 
 export async function checkAnon(ip: string): Promise<QuotaResult> {
   if (!(await rateLimit(ip))) {
     return { allowed: false, remaining: 0, plan: "free", reason: "rate_limited" };
   }
-  const { allowed, remaining } = await peekDailyQuota("anon", ip);
+  const { allowed, remaining } = await peekDailyQuota("anon", ip, ANON_DAILY_DOWNLOAD_LIMIT);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan: "free", reason: "quota_exceeded" };
   }
@@ -70,7 +72,7 @@ export async function checkUser(
   if (plan === "subscribed") {
     return { allowed: true, remaining: Infinity, plan };
   }
-  const { allowed, remaining } = await peekDailyQuota("user", userId);
+  const { allowed, remaining } = await peekDailyQuota("user", userId, FREE_USER_DAILY_DOWNLOAD_LIMIT);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan, reason: "quota_exceeded" };
   }
@@ -78,7 +80,7 @@ export async function checkUser(
 }
 
 export async function consumeAnon(ip: string): Promise<QuotaResult> {
-  const { allowed, remaining } = await consumeDailyQuota("anon", ip);
+  const { allowed, remaining } = await consumeDailyQuota("anon", ip, ANON_DAILY_DOWNLOAD_LIMIT);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan: "free", reason: "quota_exceeded" };
   }
@@ -92,7 +94,7 @@ export async function consumeUser(
   if (plan === "subscribed") {
     return { allowed: true, remaining: Infinity, plan };
   }
-  const { allowed, remaining } = await consumeDailyQuota("user", userId);
+  const { allowed, remaining } = await consumeDailyQuota("user", userId, FREE_USER_DAILY_DOWNLOAD_LIMIT);
   if (!allowed) {
     return { allowed: false, remaining: 0, plan, reason: "quota_exceeded" };
   }
