@@ -295,9 +295,9 @@ export const Hero = ({
             textShadow: "0 1px 20px rgba(0,0,0,0.6)",
           }}
         >
-          Download videos, music, images, posts and playlists from YouTube, Instagram,
+          Download videos, music, images, posts from YouTube, Instagram,
           TikTok, X, Facebook, Reddit, Pinterest, Vimeo, and SoundCloud. Free downloads
-          are capped at 1080p for v1. No ads, no watermarks, no mock data.
+          No ads, no watermarks, no mock data.
         </p>
 
         <div
