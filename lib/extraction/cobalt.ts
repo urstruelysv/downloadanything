@@ -98,8 +98,8 @@ async function cobaltFetch(body: CobaltRequest): Promise<CobaltSuccessResponse> 
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
+    "User-Agent": "DownloadAnything/1.0",
   };
-
   if (token) {
     headers["Authorization"] = `Api-Key ${token}`;
   }
@@ -107,7 +107,7 @@ async function cobaltFetch(body: CobaltRequest): Promise<CobaltSuccessResponse> 
   let res: Response;
 
   try {
-    res = await fetch(`${url}/api/json`, {
+    res = await fetch(`${url}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
