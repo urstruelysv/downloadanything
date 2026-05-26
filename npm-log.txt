@@ -1,0 +1,32 @@
+npm verbose cli /Users/saivamshi/.nvm/versions/node/v24.9.0/bin/node /Users/saivamshi/.nvm/versions/node/v24.9.0/bin/npm
+npm info using npm@11.6.0
+npm info using node@v24.9.0
+npm verbose title npm install
+npm verbose argv "install" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:/Users/saivamshi/.npm/_logs/2026-05-26T18_48_26_004Z-
+npm verbose logfile /Users/saivamshi/.npm/_logs/2026-05-26T18_48_26_004Z-debug-0.log
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 696ms
+npm http cache https://registry.npmjs.org/esbuild 33ms (cache hit)
+npm http cache https://registry.npmjs.org/next 56ms (cache hit)
+npm http cache https://registry.npmjs.org/postcss 675ms (cache hit)
+npm http cache https://registry.npmjs.org/@esbuild-kit%2fcore-utils 9ms (cache hit)
+npm http cache https://registry.npmjs.org/@esbuild-kit%2fesm-loader 2ms (cache hit)
+npm http cache https://registry.npmjs.org/drizzle-kit 5ms (cache hit)
+
+up to date, audited 430 packages in 2s
+
+84 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (5 moderate, 1 high)
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm verbose cwd /Users/saivamshi/Developer/git/downloadanything
+npm verbose os Darwin 25.2.0
+npm verbose node v24.9.0
+npm verbose npm  v11.6.0
+npm verbose exit 0
+npm info ok
