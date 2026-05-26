@@ -22,9 +22,9 @@ export const POST = withApi(
       return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     }
 
-    const consume = ctx.user
-      ? await consumeUser(ctx.user.id, ctx.plan)
-      : await consumeAnon(ctx.ip);
+    const consume = ctx.auth.user
+      ? await consumeUser(ctx.auth.user.id, ctx.auth.plan)
+      : await consumeAnon(ctx.auth.ip);
     if (!consume.allowed) {
       return jsonError(consume.reason ?? "quota_exceeded", 429, { upgradeUrl: "/pricing" });
     }
@@ -32,8 +32,8 @@ export const POST = withApi(
     const result = await download(ctx.url, formatId, directUrl, directHeaders, title, ext);
 
     logDownload({
-      userId: ctx.user?.id ?? null,
-      ip: ctx.ip,
+      userId: ctx.auth.user?.id ?? null,
+      ip: ctx.auth.ip,
       url: ctx.url,
       platform: ctx.platform!.platform,
       format: formatId,

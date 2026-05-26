@@ -4,7 +4,8 @@ import { validateUrl, detect } from "@/lib/platform";
 import { ExtractError } from "@/lib/extraction";
 import { withAuth } from "./with-auth";
 import { checkQuota } from "@/lib/quota";
-import { ApiContext, UrlApiContext } from "./types";
+import { type ApiContext, type UrlApiContext } from "./types";
+export { type ApiContext, type UrlApiContext } from "./types";
 
 type HandlerFn<C> = (req: NextRequest, ctx: C) => Promise<Response>;
 

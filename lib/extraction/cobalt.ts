@@ -215,13 +215,13 @@ export async function cobaltExtract(
         formatId: encodeCobaltFormat("audio", "mp3", "320"),
         quality: "High Quality (320kbps)",
         ext: "mp3",
-        delivery: "tunnel",
+        delivery: "worker-stream",
       });
       formats.push({
         formatId: encodeCobaltFormat("audio", "mp3", "128"),
         quality: "Standard (128kbps)",
         ext: "mp3",
-        delivery: "tunnel",
+        delivery: "worker-stream",
       });
     } else {
       // Video presets
@@ -230,7 +230,7 @@ export async function cobaltExtract(
           formatId: encodeCobaltFormat("auto", preset.quality),
           quality: preset.label,
           ext: "mp4",
-          delivery: "tunnel",
+          delivery: "worker-stream",
         });
       }
       // Also add an audio-only option for videos
@@ -238,7 +238,7 @@ export async function cobaltExtract(
         formatId: encodeCobaltFormat("audio", "mp3", "128"),
         quality: "Audio only (MP3)",
         ext: "mp3",
-        delivery: "tunnel",
+        delivery: "worker-stream",
       });
     }
 

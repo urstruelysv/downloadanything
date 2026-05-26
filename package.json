@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.658.0",
     "@aws-sdk/s3-request-presigner": "^3.658.0",
     "@better-auth/drizzle-adapter": "^1.6.11",
+    "@better-auth/infra": "^0.2.8",
     "@hookform/resolvers": "^3.9.1",
     "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-dialog": "1.1.4",

@@ -12,8 +12,8 @@ export const POST = withApi(
     const result = await extract(ctx.url);
 
     logDownload({
-      userId: ctx.user?.id ?? null,
-      ip: ctx.ip,
+      userId: ctx.auth.user?.id ?? null,
+      ip: ctx.auth.ip,
       url: ctx.url,
       platform: ctx.platform!.platform,
       format: null,
@@ -22,7 +22,7 @@ export const POST = withApi(
 
     return Response.json({
       ...result,
-      plan: ctx.plan,
+      plan: ctx.auth.plan,
       remaining: ctx.quota.remaining,
       supportedPlatforms: supportedPlatforms(),
     });
