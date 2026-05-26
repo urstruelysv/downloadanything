@@ -26,7 +26,12 @@ export function withApi<O extends ApiOptions>(
       }
 
       // Enforce quota
-      const quota = await checkQuota(auth);
+      const quota = await checkQuota(
+        auth.user ? "user" : "anon",
+        auth.user?.id ?? auth.ip,
+        auth.ip,
+        auth.plan
+      );
       if (!quota.allowed) {
         return jsonError(quota.reason ?? "quota_exceeded", 429, { upgradeUrl: "/pricing" });
       }
