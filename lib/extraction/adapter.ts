@@ -1,22 +1,27 @@
 import type { Platform, ContentType, ExtractResult } from "@/shared/types";
 import type { DownloadResult } from "./index";
 
+export type AdapterCapability = {
+  platform: Platform;
+  contentType: ContentType;
+};
+
 export type ExtractionAdapter = {
-  ownsFormat: (formatId: string) => boolean;
+  canHandle: (cap: AdapterCapability) => boolean;
   extract: (url: string, platform: Platform, contentType: ContentType) => Promise<ExtractResult>;
   download: (url: string, formatId: string) => Promise<DownloadResult>;
 };
 
 export type AdapterRegistry = {
-  findAdapter: (formatId: string) => ExtractionAdapter | null;
+  findAdapter: (cap: AdapterCapability) => ExtractionAdapter | null;
   adapters: ExtractionAdapter[];
 };
 
 export function createAdapterRegistry(adapters: ExtractionAdapter[]): AdapterRegistry {
   return {
     adapters,
-    findAdapter(formatId: string) {
-      return adapters.find((a) => a.ownsFormat(formatId)) ?? null;
+    findAdapter(cap: AdapterCapability) {
+      return adapters.find((a) => a.canHandle(cap)) ?? null;
     },
   };
 }

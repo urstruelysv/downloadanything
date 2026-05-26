@@ -42,6 +42,7 @@ export function createWorkerApp(token: string) {
     formatId: z.string().min(1),
     title: z.string().optional(),
     ext: z.string().optional(),
+    sizeBytes: z.number().optional(),
   });
 
   app.post("/download", async (c) => {
@@ -57,6 +58,7 @@ export function createWorkerApp(token: string) {
         body.formatId,
         body.title,
         body.ext,
+        body.sizeBytes,
       );
 
       if (sizeBytes !== undefined && sizeBytes > STREAM_LIMIT_BYTES) {

@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server";
-import type { User } from "@supabase/supabase-js";
-import { getCurrentUser, getUserPlan } from "@/lib/auth/supabase-server";
+import { getSession, getUserPlan } from "@/lib/auth/session";
 import { clientIp } from "@/lib/http/ip";
 import type { Plan } from "@/lib/quota";
 
 export type AuthContext = {
   ip: string;
-  user: User | null;
+  user: { id: string; email: string } | null;
   plan: Plan;
 };
 
@@ -16,16 +15,17 @@ export function withAuth(
   return async (req: NextRequest): Promise<Response> => {
     const ip = clientIp(req);
 
-    let user: User | null = null;
-    try {
-      user = await getCurrentUser();
-    } catch {
-      // auth failure — treat as anonymous
-    }
-
+    let user: { id: string; email: string } | null = null;
     let plan: Plan = "free";
-    if (user) {
-      plan = await getUserPlan(user.id);
+
+    try {
+      const session = await getSession();
+      if (session?.user) {
+        user = { id: session.user.id, email: session.user.email };
+        plan = await getUserPlan(user.id);
+      }
+    } catch (e) {
+      console.error("[auth] session error:", e);
     }
 
     return handler(req, { ip, user, plan });

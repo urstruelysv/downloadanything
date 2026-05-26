@@ -12,7 +12,7 @@ Pro ($3.99/mo or $29/yr): unlimited, up to 8K, playlists, 50-URL batches, perman
 | Frontend | Next.js 15 App Router (Vercel) |
 | Worker | Node 24 + Hono on Railway (Docker) |
 | Extraction | yt-dlp + gallery-dl + ffmpeg |
-| Auth + DB | Supabase |
+| Auth + DB | Neon + Drizzle + Better-Auth |
 | Cache + rate limit + quota | Upstash Redis |
 | Big-file storage | Cloudflare R2 (1 hr signed URLs) |
 | Billing | Lemon Squeezy (merchant of record) |
@@ -26,13 +26,14 @@ Browser → Vercel (Next.js)
             ├── /api/checkout      → Lemon Squeezy hosted checkout
             ├── /api/webhooks/lemonsqueezy → flips subscription state
             └── /api/me            → current user + plan
+            └── /api/auth/*        → Better-Auth handlers
 
 Vercel ↔ Railway worker (Hono):
    POST /extract  → ExtractResult JSON
    POST /download → bytes (≤50 MB) or { r2Url }
    GET  /healthz
 
-Auth: Supabase JWT cookies (server-side verification, no middleware gate).
+Auth: Better-Auth (Drizzle).
 Quota: Upstash Redis. Anon = 5/day per IP. Free user = same per user_id. Subscribed = unlimited.
 Rate limit: 1 req/sec per IP, all tiers.
 SSRF: URL host allow-listed against detector before reaching the worker.
@@ -49,27 +50,28 @@ app/                    Next.js routes + UI
     checkout/           POST { plan } → { url }
     webhooks/lemonsqueezy/  POST raw → upsert subscription
     me/                 GET → user + plan
+    auth/               Better-Auth route handlers
 components/site/        Marketing page + downloader modal
 lib/
+  db/                   Drizzle schema + connection
   platform/             URL detector (regex map)
   extract/              router + worker client
   quota/                Upstash quota + rate limit
-  auth/                 Supabase server clients
+  auth/                 Better-Auth configuration
   billing/              Lemon Squeezy: checkout + HMAC verify
   storage/r2.ts         Cloudflare R2 (S3 SDK)
   security/             SSRF allowlist
   http/                 small request helpers
-supabase/migrations/    SQL schema (subscriptions, downloads, RLS)
 worker/                 Railway Docker container (Hono + yt-dlp + gallery-dl + ffmpeg)
 docs/superpowers/specs/ Design specs
 ```
 
 ## Local setup
 
-Prerequisites: Bun, Docker (for the worker), and accounts on Supabase, Upstash, Cloudflare R2, Lemon Squeezy.
+Prerequisites: Bun, Docker (for the worker), Neon, Upstash, Cloudflare R2, Lemon Squeezy.
 
 1. Copy env: `cp .env.example .env.local` and fill values.
-2. Apply DB schema: `psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql` (or paste into Supabase SQL editor).
+2. Initialize DB schema (via Drizzle): `npx drizzle-kit push`.
 3. Frontend:
    ```sh
    bun install
@@ -93,7 +95,7 @@ Prerequisites: Bun, Docker (for the worker), and accounts on Supabase, Upstash, 
 
 See `.env.example`. Keys split across two services:
 
-**Vercel (Next.js)**: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `WORKER_URL`, `WORKER_TOKEN`, `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_VARIANT_ID_MONTHLY`, `LEMONSQUEEZY_VARIANT_ID_YEARLY`, `LEMONSQUEEZY_WEBHOOK_SECRET`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+**Vercel (Next.js)**: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `WORKER_URL`, `WORKER_TOKEN`, `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_VARIANT_ID_MONTHLY`, `LEMONSQUEEZY_VARIANT_ID_YEARLY`, `LEMONSQUEEZY_WEBHOOK_SECRET`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
 
 **Railway (worker)**: `WORKER_TOKEN` (same as Vercel), `R2_*` (same), `PORT`.
 
@@ -102,7 +104,6 @@ See `.env.example`. Keys split across two services:
 - Worker rejects anything without `X-Worker-Token`.
 - LS webhook verifies HMAC-SHA256 with `LEMONSQUEEZY_WEBHOOK_SECRET`; mismatched → 401.
 - SSRF: `lib/security/url-allowlist.ts` blocks `localhost`, RFC1918, link-local, and any host not detected as a supported platform.
-- Service-role Supabase key only on the server.
 - R2 GETs are time-limited signed URLs (1 hr, random object key).
 - LS `custom_data.user_id` is set server-side at checkout; the client cannot inject one.
 
@@ -110,7 +111,7 @@ See `.env.example`. Keys split across two services:
 
 - **Frontend → Vercel**: import the repo. Add env vars. Default Node runtime (Fluid Compute). `vercel deploy` for previews; `vercel deploy --prod` to ship.
 - **Worker → Railway**: connect the repo, point service root at `worker/`, Railway auto-builds the Dockerfile. Add env. Expose `:8080`.
-- **DB → Supabase**: run the migration once. RLS enforces per-user reads.
+- **DB → Neon**: create project. Get `DATABASE_URL`. Push schema via `npx drizzle-kit push`.
 - **Webhook**: in Lemon Squeezy, add `https://YOUR_DOMAIN/api/webhooks/lemonsqueezy` with the same secret.
 
 ## Acceptance (per spec)

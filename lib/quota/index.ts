@@ -50,6 +50,16 @@ async function consumeDailyQuota(
   return { allowed: n <= limit, remaining };
 }
 
+export async function checkQuota(
+  type: "anon" | "user",
+  id: string,
+  ip: string,
+  plan?: Plan,
+): Promise<QuotaResult> {
+  if (type === "anon") return checkAnon(ip);
+  return checkUser(id, ip, plan ?? "free");
+}
+
 export async function checkAnon(ip: string): Promise<QuotaResult> {
   if (!(await rateLimit(ip))) {
     return { allowed: false, remaining: 0, plan: "free", reason: "rate_limited" };

@@ -1,12 +1,12 @@
 import { ExtractError } from "@/shared/errors";
 import type { Platform, ContentType, ExtractResult } from "@/shared/types";
-import type { ExtractionAdapter } from "./adapter";
+import type { ExtractionAdapter, AdapterCapability } from "./adapter";
 import type { DownloadResult } from "./index";
 import { cobaltExtract, cobaltDownload, decodeCobaltFormat } from "./cobalt";
 
 export const cobaltAdapter: ExtractionAdapter = {
-  ownsFormat(formatId: string): boolean {
-    return decodeCobaltFormat(formatId) !== null;
+  canHandle(_cap: AdapterCapability): boolean {
+    return true; // Cobalt handles everything for now
   },
 
   extract(url: string, platform: Platform, contentType: ContentType): Promise<ExtractResult> {

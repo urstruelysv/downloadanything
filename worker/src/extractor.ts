@@ -194,6 +194,7 @@ export function runDownload(
   formatId: string,
   title?: string,
   ext?: string,
+  sizeBytes?: number,
 ): Promise<DownloadResult> {
   return new Promise((resolve, reject) => {
     const args = ["-f", formatId, "-o", "-", "--no-warnings", "--no-playlist", url];
@@ -207,7 +208,7 @@ export function runDownload(
     const filename = `${safeName}.${safeExt}`;
 
     child.stdout.once("readable", () =>
-      resolve({ stream: child.stdout, contentType: "application/octet-stream", filename }),
+      resolve({ stream: child.stdout, contentType: "application/octet-stream", filename, sizeBytes }),
     );
 
     child.on("close", (code) => {

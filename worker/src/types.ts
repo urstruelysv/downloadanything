@@ -5,4 +5,5 @@ export type {
   Format,
   ExtractItem,
   ExtractResult,
+  ErrorCode,
 } from "./shared-types.js";

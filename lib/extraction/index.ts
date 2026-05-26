@@ -30,7 +30,9 @@ export async function extract(url: string): Promise<ExtractResult> {
   const det = detect(url);
   if (!det) throw new ExtractError("unsupported_platform", 400);
 
-  const adapter = registry.adapters[0];
+  const adapter = registry.findAdapter({ platform: det.platform, contentType: det.contentType });
+  if (!adapter) throw new ExtractError("unsupported_platform", 400);
+
   return retry(async () => {
     return adapter.extract(url, det.platform, det.contentType);
   });
@@ -63,7 +65,10 @@ export async function download(
     return { kind: "stream", body: res.body!, headers };
   }
 
-  const adapter = registry.findAdapter(formatId);
+  const det = detect(url);
+  if (!det) throw new ExtractError("unsupported_platform", 400);
+
+  const adapter = registry.findAdapter({ platform: det.platform, contentType: det.contentType });
   if (adapter) {
     return adapter.download(url, formatId);
   }

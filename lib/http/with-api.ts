@@ -2,16 +2,9 @@ import { NextRequest } from "next/server";
 import { jsonError } from "@/lib/http/errors";
 import { validateUrl, detect } from "@/lib/platform";
 import { ExtractError } from "@/lib/extraction";
-import { withAuth, type AuthContext } from "./with-auth";
-import { withQuota, type QuotaContext } from "./with-quota";
-
-export type ApiContext = QuotaContext;
-
-export type UrlApiContext = ApiContext & {
-  url: string;
-  platform: ReturnType<typeof detect>;
-  body: Record<string, unknown>;
-};
+import { withAuth } from "./with-auth";
+import { checkQuota } from "@/lib/quota";
+import { ApiContext, UrlApiContext } from "./types";
 
 type HandlerFn<C> = (req: NextRequest, ctx: C) => Promise<Response>;
 
@@ -25,61 +18,65 @@ export function withApi<O extends ApiOptions>(
   options: O,
   handler: HandlerFn<O["requireUrl"] extends true ? UrlApiContext : ApiContext>,
 ) {
-  return withAuth(async (req: NextRequest, authCtx: AuthContext): Promise<Response> => {
+  return withAuth(async (req: NextRequest, auth): Promise<Response> => {
     try {
-      if (options.requireAuth && !authCtx.user) {
+      if (options.requireAuth && !auth.user) {
         return jsonError("auth_required", 401);
       }
 
-      const quotaHandler = withQuota(async (_req, quotaCtx) => {
-        let ctx: any = quotaCtx;
+      // Enforce quota
+      const quota = await checkQuota(auth);
+      if (!quota.allowed) {
+        return jsonError(quota.reason ?? "quota_exceeded", 429, { upgradeUrl: "/pricing" });
+      }
 
-        if (options.requireUrl) {
-          let body: any;
-          try {
-            body = await req.json();
-          } catch {
-            return jsonError("invalid_url", 400);
-          }
+      let ctx: any = { auth, quota };
 
-          const field = options.urlField ?? "url";
-          const rawUrl = body?.[field];
-          if (!rawUrl || typeof rawUrl !== "string") {
-            return jsonError("invalid_url", 400);
-          }
-
-          const validation = validateUrl(rawUrl);
-          if (!validation.ok) {
-            return jsonError(validation.reason, 400);
-          }
-
-          const det = detect(rawUrl);
-          if (!det) {
-            return jsonError("unsupported_platform", 400);
-          }
-
-          ctx = { ...ctx, url: validation.url, platform: det, body };
+      // Handle URL parsing if needed
+      if (options.requireUrl) {
+        let body: any;
+        try {
+          body = await req.json();
+        } catch {
+          return jsonError("invalid_url", 400);
         }
 
-        return await handler(req, ctx);
-      });
+        const field = options.urlField ?? "url";
+        const rawUrl = body?.[field];
+        if (!rawUrl || typeof rawUrl !== "string") {
+          return jsonError("invalid_url", 400);
+        }
 
-      return await quotaHandler(req, authCtx);
+        const validation = validateUrl(rawUrl);
+        if (!validation.ok) {
+          return jsonError(validation.reason, 400);
+        }
+
+        const det = detect(rawUrl);
+        if (!det) {
+          return jsonError("unsupported_platform", 400);
+        }
+
+        ctx = { ...ctx, url: validation.url, platform: det, body };
+      }
+
+      return await handler(req, ctx);
     } catch (e) {
       if (e instanceof ExtractError) {
         return jsonError(e.code, e.httpStatus);
       }
       console.error("[api]", e);
-      const msg = String((e as Error)?.message ?? "");
       if (
-        msg.includes("Worker not configured") ||
-        msg.includes("ECONNREFUSED") ||
-        msg.includes("ENOTFOUND") ||
-        msg.includes("ETIMEDOUT") ||
-        msg.includes("ECONNRESET") ||
-        msg.includes("socket hang up") ||
-        msg.includes("fetch failed") ||
-        msg.includes("Cobalt")
+        [
+          "Worker not configured",
+          "ECONNREFUSED",
+          "ENOTFOUND",
+          "ETIMEDOUT",
+          "ECONNRESET",
+          "socket hang up",
+          "fetch failed",
+          "Cobalt",
+        ].some((m) => String((e as Error)?.message ?? "").includes(m))
       ) {
         return jsonError("degraded", 503, {
           message: "Extraction worker is not reachable.",

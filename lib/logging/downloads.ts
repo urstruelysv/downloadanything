@@ -1,4 +1,5 @@
-import { supabaseService } from "@/lib/auth/supabase-server";
+import { db } from "@/lib/db";
+import { downloads } from "@/lib/db/schema";
 
 export type DownloadLogEntry = {
   userId: string | null;
@@ -7,20 +8,23 @@ export type DownloadLogEntry = {
   platform: string;
   format: string | null;
   status: "success" | "error";
+  error?: string;
+  bytes?: number;
 };
 
 export function logDownload(entry: DownloadLogEntry): void {
-  supabaseService()
-    .from("downloads")
-    .insert({
-      user_id: entry.userId,
+  db.insert(downloads)
+    .values({
+      userId: entry.userId,
       ip: entry.ip,
       url: entry.url,
       platform: entry.platform,
       format: entry.format,
       status: entry.status,
+      error: entry.error,
+      bytes: entry.bytes,
     })
-    .then(({ error }: { error: unknown }) => {
-      if (error) console.error("[download-log]", error);
+    .catch((err) => {
+      console.error("[download-log] failed:", err);
     });
 }

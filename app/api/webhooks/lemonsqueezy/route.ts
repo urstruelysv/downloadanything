@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/billing/lemonsqueezy";
-import { supabaseService } from "@/lib/auth/supabase-server";
+import { db } from "@/lib/db";
+import { subscriptions } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,20 +44,28 @@ export async function POST(req: NextRequest) {
   const plan = variantName.includes("year") ? "yearly" : "monthly";
   const renewsAt: string | null = sub.renews_at ?? null;
 
-  const sb = supabaseService();
+  const sb = db;
   const effectiveStatus = ACTIVE_STATUSES.has(status) ? "active" : status;
 
-  await sb.from("subscriptions").upsert(
-    {
-      user_id: userId,
-      ls_subscription_id: subId,
+  await sb.insert(subscriptions)
+    .values({
+      userId: userId,
+      lsSubscriptionId: subId,
       status: effectiveStatus,
       plan,
-      renews_at: renewsAt,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" },
-  );
+      renewsAt: renewsAt ? new Date(renewsAt) : null,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.userId,
+      set: {
+        lsSubscriptionId: subId,
+        status: effectiveStatus,
+        plan,
+        renewsAt: renewsAt ? new Date(renewsAt) : null,
+        updatedAt: new Date(),
+      },
+    });
 
   return NextResponse.json({ ok: true });
 }

@@ -145,12 +145,29 @@ function titleFromFilename(filename: string): string {
 
 // --- Extract ---
 
+const VIDEO_QUALITY_PRESETS = [
+  { label: "4K (2160p)", quality: "2160" },
+  { label: "2K (1440p)", quality: "1440" },
+  { label: "Full HD (1080p)", quality: "1080" },
+  { label: "HD (720p)", quality: "720" },
+  { label: "SD (480p)", quality: "480" },
+];
+
 export async function cobaltExtract(
   url: string,
   platform: Platform,
   contentType: ContentType,
 ): Promise<ExtractResult> {
-  const probe = await cobaltFetch({ url, videoQuality: "720" });
+  const { redis } = await import("@/lib/quota/redis");
+  const r = redis();
+  const cacheKey = `extract:${url}`;
+  
+  const cached = await r.get<ExtractResult>(cacheKey);
+  if (cached) return cached;
+
+  const probe = await cobaltFetch({ url });
+
+  let result: ExtractResult;
 
   if (probe.status === "picker") {
     const items: ExtractItem[] = probe.picker.map((item, i) => ({
@@ -171,45 +188,74 @@ export async function cobaltExtract(
         : probe.picker[0]?.type === "photo"
           ? "photo"
           : "video";
-    return {
+    result = {
       platform,
       contentType: resolved,
       title: `${platform.charAt(0).toUpperCase() + platform.slice(1)} media`,
       thumbnail: thumb,
       items,
     };
-  }
-
-  if (probe.status === "local-processing") {
+  } else if (probe.status === "local-processing") {
     throw new ExtractError(
       "degraded",
       501,
       "This link needs local processing that is not supported yet.",
     );
+  } else {
+    // tunnel or redirect
+    const filename = probe.filename || "download";
+    const title = titleFromFilename(filename);
+    const ext = extFromFilename(filename);
+    const isAudio = contentType === "audio" || AUDIO_EXTENSIONS.has(ext);
+
+    const formats: Format[] = [];
+
+    if (isAudio) {
+      formats.push({
+        formatId: encodeCobaltFormat("audio", "mp3", "320"),
+        quality: "High Quality (320kbps)",
+        ext: "mp3",
+        delivery: "tunnel",
+      });
+      formats.push({
+        formatId: encodeCobaltFormat("audio", "mp3", "128"),
+        quality: "Standard (128kbps)",
+        ext: "mp3",
+        delivery: "tunnel",
+      });
+    } else {
+      // Video presets
+      for (const preset of VIDEO_QUALITY_PRESETS) {
+        formats.push({
+          formatId: encodeCobaltFormat("auto", preset.quality),
+          quality: preset.label,
+          ext: "mp4",
+          delivery: "tunnel",
+        });
+      }
+      // Also add an audio-only option for videos
+      formats.push({
+        formatId: encodeCobaltFormat("audio", "mp3", "128"),
+        quality: "Audio only (MP3)",
+        ext: "mp3",
+        delivery: "tunnel",
+      });
+    }
+
+    result = {
+      platform,
+      contentType: isAudio ? "audio" : contentType === "unknown" ? "video" : contentType,
+      title,
+      items: [{
+        id: "0",
+        type: isAudio ? "audio" : "video",
+        formats,
+      }],
+    };
   }
 
-  // tunnel or redirect
-  const filename = probe.filename || "download";
-  const title = titleFromFilename(filename);
-  const ext = extFromFilename(filename);
-  const isAudio = contentType === "audio" || AUDIO_EXTENSIONS.has(ext);
-
-  return {
-    platform,
-    contentType: isAudio ? "audio" : contentType === "unknown" ? "video" : contentType,
-    title,
-    items: [{
-      id: "0",
-      type: isAudio ? "audio" : "video",
-      formats: [{
-        formatId: "direct:0",
-        quality: isAudio ? "Original audio" : qualityFromFilename(filename),
-        ext,
-        delivery: "direct",
-        directUrl: probe.url,
-      }],
-    }],
-  };
+  await r.set(cacheKey, result, { ex: 600 });
+  return result;
 }
 
 // --- Download ---
